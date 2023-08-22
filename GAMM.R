@@ -10,77 +10,13 @@ library(parallel)
 library(fitdistrplus)
 library(metRology)
 
-# Model functions
-null_model <- function(df){
-  with(df, bam(RelAbundance ~ s(Fraction, k = 35) + factor(as.factor(Condition)) + factor(as.factor(Replicate)),
-                  data = df,
-                  method = "REML",
-                  family = gaussian(),
-                  robust = TRUE))
-}
 
-alt_model <- function(df){
-  with(df, bam(df$RelAbundance ~ s(Fraction, k = 35, by=factor(as.factor(Condition))) + factor(as.factor(Replicate)),
-               data = df,
-               method = "REML",
-               family = gaussian(),
-               robust = TRUE))
-}
-
-calculate_RSS <- function(model){
-  res <- residuals(model)
-  rss <- sum(res^2)
-  
-  return(rss)
-}
-
-
-# Extract residuals from the combined model
-null_residuals <- residuals(combined_model)
-
-DDX42_null_model <- null_model(DDX42)
-calculate_RSS(DDX42_null_model)
-DDX42_alt_model <- alt_model(DDX42)
-calculate_RSS(DDX42_alt_model)
-
-# Add fitted values and residuals from each model to the data.
-DDX42<- 
-  DDX42 %>% 
-  mutate(Fitted_null = fitted(DDX42_null_model),
-         Residuals_null = residuals(DDX42_null_model),
-         Fitted_alt = fitted(DDX42_alt_model),
-         Residuals_alt = residuals(DDX42_alt_model))
-
-# We will now visualize the models.
-DDX42_null_plot <- DDX42_plot +
-  geom_line(data = distinct(DDX42, Fraction, Fitted_null),
-            aes(x = Fraction, y = Fitted_null, group=1),
-            linewidth = 1.2, alpha = 0.6)+
-  annotate(geom = "text", x = 6, y = 0.25, label = "RSS = 0.0259", 
-           size = 5)
-
-DDX42_alt_plot <- DDX42_plot +
-  geom_line(data = distinct(DDX42, Fraction, Condition, Fitted_alt),
-            aes(x = Fraction, y = Fitted_alt, group=Condition,
-                color = Condition),linewidth = 1.2, alpha = 0.7)+
-  annotate(geom = "text", x = 6, y = 0.25, label = "RSS = 0.0092", 
-           size = 5)
-
-# For a better visual comparison we combine the model plots (corresponding to Fig.X):
-ggarrange(DDX42_null_plot, DDX42_alt_plot, ncol = 2, common.legend = TRUE,
-          labels = c("Null model", "Alternative model"), label.x = 0.2)
-
-
-# 3.2 Global fitting----
+# 3.2 Global model fitting----
 ### Model fitting - global
 # We will proceed with applying this strategy to the complete dataset.
-# To identify significantly shifting elution profiles between control and IBR treatment we will compute the F-statistic.
-# For this we need to obtain residual sum of squares (RSS) and the degrees of freedom (DoF) from each model, in accordance with the equation:
-#  F = df2/df1 * (RSS0 - RSS1)/RSS1
-# This time we will extract the following parameters:
-#  - rss = residual sum of squares 
-#  - n = number of fitted values
-#  - df = sum of the degrees of freedom 
+# To identify significantly shifting elution profiles between control and IBR treatment we will 
+
+
 
 
 # We will now implement both models into a global fitting function.
@@ -107,6 +43,7 @@ completeData <- completeData %>%
           Fraction = as.numeric(Fraction),
           Replicate = as.factor(Replicate))
 
+
 # Create unlanced datest with only one Ctrl replicate
 unbalanced_data <- 
   data %>%
@@ -114,6 +51,8 @@ unbalanced_data <-
     mutate(Condition = as.factor(Condition),
            Fraction = as.numeric(Fraction),
            Replicate = as.factor(Replicate))
+
+
 
 # Start model fitting on the complete data set:
 set.seed(123)
@@ -143,26 +82,63 @@ wb_fit <- fitdistr(log_transformed_RSS_converged, "weibull")
 print(wb_fit)
 hist(log_transformed_RSS_converged, freq = FALSE, breaks = 30)
 curve(dweibull(x, shape = wb_fit$estimate[1], scale = wb_fit$estimate[2]), add = TRUE, col = "red")
+
+sorted_log_rss <- sort(log_transformed_RSS_converged)
+n <- length(sorted_log_rss)
+percentiles <- (1:n)/(n+1)
+weibull_quantiles <- qweibull(percentiles, shape = wb_fit$estimate[1], scale = wb_fit$estimate[2])
+plot(weibull_quantiles, sorted_log_rss, main = "Q-Q Plot against chi-square Distribution",
+    xlab="Theoretical Chi-square Quantiles", ylab="Sample Quantiles")
+abline(0, 1, col="red")
+
+# chi-squared fit
+start_params <- list(df1 = 1, df2 = 1)
+chi_fit <- fitdistr(log_transformed_RSS_converged, "chi-squared", start=start_params)
+print(f_fit)
+# plot hist
+hist(log_transformed_RSS_converged, freq = FALSE, breaks = 30)
+curve(dchisq(x, df = chi_fit$estimate[1]), add = TRUE, col = "red")
+# Q-Q plot
+chi_quantiles <- qchisq(percentiles, df = chi_fit$estimate[1])
+plot(chi_quantiles, sorted_log_rss, main = "Q-Q Plot against chi-square Distribution",
+     xlab="Theoretical Chi-square Quantiles", ylab="Sample Quantiles")
+abline(0, 1, col="red")
+
+# fit chi-square distribution to log-transformed data
+hist(log_transformed_RSS_converged, freq = FALSE, breaks = 30)
+curve(dweibull(x, shape = wb_fit$estimate[1], scale = wb_fit$estimate[2]), add = TRUE, col = "red")
+
+
 ks_log_wb <- ks.test(log_transformed_RSS_converged, "pweibull",
                   shape = wb_fit$estimate["shape"],
                   scale = wb_fit$estimate["scale"])
 print(ks_log_wb)
 descdist(log_transformed_RSS_converged)
 
-typeof(wb_fit)
-qqcomp(wb_fit)
 
 
 
-sqrt_transformed_RSS_f <- sqrt(deltaRSS_bam_f$deltaRSS)
-sqrt_fit <- fitdistr(sqrt_transformed_RSS_f , "normal")
-print(sqrt_fit)
+sqrt_transformed_RSS_f <- sqrt(deltaRSS_bam_converged$deltaRSS)
+descdist(sqrt_transformed_RSS_f )
+sqrt_fit_gamma <- fitdistr(deltaRSS_bam_converged$deltaRSS, "gamma")
+print(sqrt_fit_gamma)
 hist(sqrt_transformed_RSS_f, freq = FALSE, breaks = 25)
-curve(dnorm(x, mean = sqrt_fit$estimate[1], sd = sqrt_fit$estimate[2]), add = TRUE, col = "red")
-ks_sqrt <- ks.test(sqrt_transformed_RSS_f, "pnorm",
-                   mean = sqrt_fit$estimate["mean"],
-                   sd = sqrt_fit$estimate["sd"])
+curve(dgamma(x, shape = sqrt_fit_gamma$estimate[1], rate = sqrt_fit_gamma$estimate[2]), add = TRUE, col = "red")
+
+
+
+ks_sqrt <- ks.test(sqrt_transformed_RSS_f, "pgamma",
+                   shape = sqrt_fit_gamma$estimate[1],
+                   rate = sqrt_fit_gamma$estimate[2])
 print(ks_sqrt)
+
+# TEst:
+# gamma
+# chi
+# f
+
+
+
 
 inverse_transformed_deltaRSS <- 1 / deltaRSS_bam_f$deltaRSS
 inverse_fit <- fitdistr(inverse_transformed_deltaRSS, "normal")

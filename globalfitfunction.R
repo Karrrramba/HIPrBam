@@ -331,10 +331,9 @@ DDX42 %>%
   mutate(delta_SSR = nullResiduals - altResiduals) %>% 
   kable(digits = 4)
 
-# As we could confer from the visual representation of the models the RSS of the alternative model 
-# is smaller.
 
-### Model fitting - global
+
+
 # We will proceed with applying this strategy to the complete dataset.
 # To identify significantly shifting elution profiles between control and IBR treatment we will compute the F-statistic.
 # For this we need to obtain residual sum of squares (RSS) and the degrees of freedom (DoF) from each model, in accordance with the equation:
@@ -343,6 +342,7 @@ DDX42 %>%
 #  - rss = residual sum of squares; rss per model as well as the summed RSS for the alternative model (RSSalt) 
 #  - nA = number of fitted values
 #  - dfA = sum of the degrees of freedom 
+
 
 # First we will define the respective functions for the null and the alternative model:
 fitNullModel <- function(df){
@@ -477,8 +477,6 @@ hist(bc_scaled_deltaRSS$scaled_dRSS, freq = FALSE, main = "Approximated F-distri
 tibble("gamma_shape" = deltaRSS_fit_gamma$estimate[1],
        "gamma_scale" = deltaRSS_fit_gamma$estimate[2]
 )
-
-
 
 
 
