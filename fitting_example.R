@@ -19,7 +19,7 @@ null_model <- function(df){
 }
 
 alt_model <- function(df){
-  with(df, bam(df$RelAbundance ~ s(Fraction, k = 35, by=factor(as.factor(Condition))) + factor(as.factor(Replicate)),
+  with(df, bam(RelAbundance ~ s(Fraction, k = 35, by=factor(as.factor(Condition))) + factor(as.factor(Replicate)),
                data = df,
                method = "REML",
                family = gaussian(),
@@ -32,7 +32,6 @@ calculate_RSS <- function(model){
   
   return(rss)
 }
-
 
 # Extract residuals from the combined model
 null_residuals <- residuals(combined_model)
@@ -69,37 +68,37 @@ DDX42_alt_plot <- DDX42_plot +
 ggarrange(DDX42_null_plot, DDX42_alt_plot, ncol = 2, common.legend = TRUE,
           labels = c("Null model", "Alternative model"), label.x = 0.2)
 
+
+DDX_LRT <- anova(DDX42_null_model, DDX42_alt_model, test="LRT")
+DDX_LRT[1,2]
+LRT
 # alternative showing RSS and LRT principles.
 # Fitted models using bam()
-full_model <- bam(y ~ s(x), data=data)
-simpler_model <- bam(y ~ 1, data=data)
-
-# Calculate residuals and fitted values
-data$residuals <- residuals(full_model)
-data$fitted <- fitted(full_model)
 
 # Log likelihoods
-data$logLik_full <- rep(logLik(full_model), n)
-data$logLik_simple <- rep(logLik(simpler_model), n)
-ll_diff = logLik(full_model) - logLik(simpler_model)
+DDX42$logLik_alt <- rep(logLik(DDX42_alt_model), nrow(DDX42))
+DDX42$logLik_null<- rep(logLik(DDX42_null_model), nrow(DDX42))
+ll_diff = logLik(DDX42_alt_model) - logLik(DDX42_null_model)
+
 
 # Create a data frame for likelihood values
-lik_data <- data.frame(model = c("Simpler Model", "Full Model"),
-                       value = c(logLik(simpler_model), logLik(full_model)))
+lik_data <- data.frame(model = c("Null Model", "Alternative Model"),
+                       value = c(logLik(DDX42_null_model), logLik(DDX42_alt_model)))
 
 # Plot
-p1 <- ggplot(data, aes(x=x, y=y)) +
-  geom_point(aes(y=y), color="blue") +
-  geom_line(aes(y=fitted), color="red") +
-  geom_segment(aes(yend=y-residuals, y=fitted), color="green", linetype=2) +
-  labs(title="RSS Illustration", y="Y")
+p1 <- ggplot(DDX42, aes(x=Fraction, y=RelAbundance)) +
+  geom_point(aes(y=RelAbundance), color="blue") +
+  geom_line(aes(y=Fitted_alt), color="red") +
+  geom_segment(aes(yend=RelAbundance-residuals, y=Fitted_alt), color="green", linetype=2) +
+  labs(title="RSS Illustration", y="RelAbundance")
 
+p1
 p2 <- ggplot(lik_data, aes(x=model, y=value, fill=model)) +
   geom_col(position="dodge") +
   geom_text(aes(label=sprintf("%.2f", value)), vjust=-0.5) +
   labs(title=paste("Log Likelihood Ratio Test (Difference:", sprintf("%.2f", ll_diff), ")"), y="Log Likelihood") +
   theme(legend.position="none")
-
+p2
 # Arrange plots side by side using gridExtra
 install.packages("gridExtra")
 library(gridExtra)
