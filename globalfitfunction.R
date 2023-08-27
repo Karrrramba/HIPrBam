@@ -12,7 +12,7 @@ library(metRology)
 
 # 1. Data import ---- 
 # Import HIC-MS/MS data set ("relInt_replicates_R.txt"). This data table was created from the ProteinGroups table from the MaxQuant output.
-# After filtering for false positives (reverse) and contaminants, only proteins quantified in both conditions and/or replicates (IBR) were considered. 
+# After filtering for false positives (reverse) and contaminants, only proteins quantified in both experiments and/or replicates (IBR) were considered. 
 # Relative intensities were calculated by dividing the intensity in each fraction by the summed intensity for the respective protein group and label.
 data <- read.delim(file.choose())
 
@@ -28,15 +28,15 @@ data <- data %>%
          "IBR1_" = matches("rel.Int.M"),
          "IBR2_" = matches("rel.Int.H")) %>%
   dplyr::select(!c(Protein.IDs, Peptides, matches("Intensity"))) %>%
-  dplyr::mutate_if(is_integer, as.numeric) %>% 
-  pivot_longer(cols=1:105, names_to = "Fraction", values_to = "RelAbundance") %>% 
-  mutate(Condition = str_extract(Fraction, "^([^_]*)-*"),
-         Replicate = as.factor(str_extract(Condition, ".$")),
-         Condition = as.factor(str_replace(Condition, ".$", "")),
+  dplyr::mutate(across(where(is_integer)), as.numeric) %>% #was mutate_if
+  pivot_longer(cols=1:105, names_to = "Fraction", values_to = "RelInt") %>% 
+  mutate(Experiment = str_extract(Fraction, "^([^_]*)-*"),
+         Replicate = as.factor(str_extract(Experiment, ".$")),
+         Experiment = as.factor(str_replace(Experiment, ".$", "")),
          Fraction = str_extract(Fraction, "[^_]+$"),
-         RelAbundance = RelAbundance / 100) %>%
-  relocate(Condition, .after = GeneName) %>% 
-  relocate(Replicate, .after = Condition)
+         RelInt = RelInt / 100) %>%
+  relocate(Experiment, .after = GeneName) %>% 
+  relocate(Replicate, .after = Experiment)
 
 # Inspect the new data format.
 data %>% head()
@@ -45,14 +45,14 @@ data %>% head()
 #   - UniprotID = Unique Uniprot identifier.
 #   - ProteinName = Official full-length name. 
 #   - GeneName = Official gene name.
-#   - Condition = Categorical column with two values: "Ctrl" and "IBR".
+#   - Experiment = Categorical column with two values: "Ctrl" and "IBR".
 #     Corresponding to SILAC label; Ctrl = light, IBR = medium/heavy
 #   - Replicate = Categorical column with two values: "1" and "2".
 #     Corresponding to SILAC label; Ctrl Replicate 1 = light, 
 #                                   IBR Replicate 1 = medium
 #                                   IBR Replicate 2 = heavy
 #   - Fraction = Categorical column with corresponding fraction index 1-35.
-#   - RelAbundance= Numerical values of relative MS intensity in the corresponding fraction.
+#   - RelInt= Numerical values of relative MS intensity in the corresponding fraction.
 
 
 # 2. Data simulation ----
@@ -65,18 +65,18 @@ data %>% head()
 # We will further consider only those proteins with reproducible HIC profiles. 
 # To do this we determine the inter-replicate correlation per protein.
 IBR_rep_diff <- data %>% 
-  subset(Condition == "IBR") %>% 
+  subset(Experiment == "IBR") %>% 
   pivot_wider(., names_from = "Replicate",
-              values_from = "RelAbundance") %>% 
+              values_from = "RelInt") %>% 
   rename("IBR_1" = "1", "IBR_2" = "2") %>% 
   group_by(UniprotID) %>%
   summarise(PearsonR = cor(IBR_1, IBR_2, method = "pearson"))
 
 correlated_prot <-
   data%>% 
-  subset(Condition == "IBR") %>% 
+  subset(Experiment == "IBR") %>% 
   pivot_wider(., names_from = "Replicate",
-              values_from = "RelAbundance") %>% 
+              values_from = "RelInt") %>% 
   rename("IBR_1" = "1",
          "IBR_2" = "2") %>% 
   mutate(Difference = IBR_1 - IBR_2) %>% 
@@ -110,24 +110,6 @@ tibble('before' = data %>%
          distinct(UniprotID) %>%
          dplyr::select(UniprotID) %>% 
          nrow())
-
-# Inspect proteins for which the difference between replicates 
-# in any fraction is greater than 30% for shifting peaks into adjacent fractions.
-
-adjacent_frac <- function(x){
-  frac_indx = which(abs(repDiffIBR$Difference) >= x)
-  sort(unique(c(frac_indx-1, frac_indx, frac_indx+1)))
-}
-
-repDiffIBR %>% 
-  group_by(UniprotID) %>% 
-  slice(adjacent_frac(0.1))
-
-repDiffIBR %>% 
-  group_by(UniprotID) %>% 
-  filter(abs(Difference) >= 0.1) %>%
-  arrange(UniprotID) %>% 
-  filter(n() < 2)
 
 
 # We can plot the distribution of the differences: 
@@ -177,28 +159,28 @@ ggplot(test_dataset) +
 # the absolute value is returned instead.
 completeData <- data%>% 
   group_by(UniprotID) %>% 
-  mutate(rep2 = if_else(RelAbundance > 0,
-                        RelAbundance+sample(SimDist,  size = 35, replace = TRUE)/100,
+  mutate(rep2 = if_else(RelInt > 0,
+                        RelInt+sample(SimDist,  size = 35, replace = TRUE)/100,
                         0)) %>% 
   melt(., id = c("UniprotID", "ProteinName", "GeneName", 
-                 "Condition","Replicate", "Fraction")) %>%
-  filter(Condition != "IBR" | variable != "rep2") %>% 
+                 "Experiment","Replicate", "Fraction")) %>%
+  filter(Experiment != "IBR" | variable != "rep2") %>% 
   mutate(Replicate = ifelse(variable == "rep2", "2", Replicate)) %>% 
   dplyr::select(-variable) %>% 
-  rename("RelAbundance" = "value") %>%
+  rename("RelInt" = "value") %>%
   ungroup() %>% 
-  mutate(RelAbundance = if_else(RelAbundance<0, abs(RelAbundance), RelAbundance),
-         RelAbundance = if_else((Condition == "Ctrl"& Replicate == 2),
-                                   RelAbundance, RelAbundance))
+  mutate(RelInt = if_else(RelInt<0, abs(RelInt), RelInt),
+         RelInt = if_else((Experiment == "Ctrl"& Replicate == 2),
+                                   RelInt, RelInt))
 
-# We can now look at the distributions of inter-replicate differences both conditions:
+# We can now look at the distributions of inter-replicate differences both Experiments:
 completeData %>% 
   pivot_wider(., names_from = "Replicate",
-              values_from = "RelAbundance") %>% 
+              values_from = "RelInt") %>% 
   rename("Rep_1" = "1",
          "Rep_2" = "2") %>%
   mutate(Difference = Rep_1 - Rep_2)%>% 
-  ggplot(aes(x=Difference, group=Condition, color=Condition)) +
+  ggplot(aes(x=Difference, group=Experiment, color=Experiment)) +
   geom_histogram(aes(y = ..density..), bins = 100, 
                 alpha = 0.7, boundary = 0)+
   scale_x_continuous(breaks = seq(-40, 40, by = 10))+
@@ -207,27 +189,27 @@ completeData %>%
 
 # 3. Model fitting ----
 # 3.1 Illustrative example----
-# In order to assess differences between protein elution profiles of each condition 
-# we will compare the null model which fits a smoothing spline for all data points irrespective of condition with
-# the alternative model, which fits a smoothing spline for each condition separately.
+# In order to assess differences between protein elution profiles of each Experiment 
+# we will compare the null model which fits a smoothing spline for all data points irrespective of Experiment with
+# the alternative model, which fits a smoothing spline for each Experiment separately.
 # 
 # For demonstrative purpose we will illustrate our approach for a singular protein first.
 DDX42 <- completeData %>%
   filter(GeneName == "DDX42")
 
-# The DDX42 data contains the relative intensities from two replicates and both conditions.
+# The DDX42 data contains the relative intensities from two replicates and both Experiments.
 DDX42 %>% 
   dplyr::select(!ProteinName) %>% 
-  pivot_wider(., names_from = c(Condition, Replicate),
-              values_from = "RelAbundance") %>% 
+  pivot_wider(., names_from = c(Experiment, Replicate),
+              values_from = "RelInt") %>% 
   relocate(Ctrl_2, .after = Ctrl_1) %>% 
   kable(digits = 2)
 
 # We can visualise the differences between treatments and replicates in a plot:
 DDX42_plot <- 
   DDX42 %>% 
-  ggplot(aes(x=fct_inorder(Fraction), y=RelAbundance)) +
-  geom_point(aes(shape = Replicate, color = Condition), size = 2)+
+  ggplot(aes(x=fct_inorder(Fraction), y=RelInt)) +
+  geom_point(aes(shape = Replicate, color = Experiment), size = 2)+
   theme_bw()+
   ggtitle("DDX42")+
   scale_color_manual("", values = c("darkgrey", "darkred"))
@@ -236,7 +218,7 @@ print(DDX42_plot)
 # For our model fitting we create a basic fitting function :
 fitss <-  function(df){
   with(df, ss(x = df$Fraction, 
-              y = df$RelAbundance,
+              y = df$RelInt,
               all.knots = TRUE,
               keep.data = TRUE,
               homosced = TRUE,
@@ -245,7 +227,7 @@ fitss <-  function(df){
 
 fitgsm <-  function(df){
   with(df, ss(x = df$Fraction, 
-              y = df$RelAbundance,
+              y = df$RelInt,
               all.knots = TRUE,
               keep.data = TRUE,
               homosced = FALSE,
@@ -266,11 +248,11 @@ DDX42 <- DDX42 %>%
 combinedAltModel <- function(df){
   # define separate models
   Ctrl <- df %>% 
-  filter(Condition == "Ctrl") %>% 
+  filter(Experiment == "Ctrl") %>% 
   fitss()
   
   IBR <- df %>% 
-  filter(Condition == "IBR") %>% 
+  filter(Experiment == "IBR") %>% 
   fitss()
   # extract model parameters
   fit_c <-  fitted.ss(Ctrl)
@@ -293,13 +275,13 @@ combinedAltModel <- function(df){
 DDX42alt <- combinedAltModel(DDX42)
 
 DDX42 <- DDX42 %>% 
-  arrange(Condition, Replicate) %>% 
+  arrange(Experiment, Replicate) %>% 
   mutate(altFitted = DDX42alt$altFitted,
          altResiduals = DDX42alt$altResiduals)
 
 # Again we will take a look at our data with the attached model parameters:
 DDX42 %>% 
-  filter(Condition == "Ctrl",
+  filter(Experiment == "Ctrl",
          Replicate == "1") %>% 
   dplyr::select(!ProteinName) %>% 
   kable(digits = 2)
@@ -313,9 +295,9 @@ DDX42null_plot <- DDX42_plot +
 print(DDX42null_plot)
   
 DDX42alt_plot <- DDX42_plot +
-  geom_line(data = distinct(DDX42, Fraction, Condition, altFitted),
-            aes(x = fct_inorder(Fraction), y = altFitted, group=Condition,
-                color = Condition),linewidth = 1.2, alpha = 0.7)
+  geom_line(data = distinct(DDX42, Fraction, Experiment, altFitted),
+            aes(x = fct_inorder(Fraction), y = altFitted, group=Experiment,
+                color = Experiment),linewidth = 1.2, alpha = 0.7)
 print(DDX42alt_plot)
 
 # For a better visual comparison we combine the model plots (corresponding to Fig.X):
@@ -360,13 +342,13 @@ fitNullModel <- function(df){
 }
 
 fitAltModel <- function(df){
-  # create fit for each condition
+  # create fit for each Experiment
   fitCtrl <- df %>%
-    subset(., Condition == "Ctrl") %>% 
+    subset(., Experiment == "Ctrl") %>% 
     fitss()
   
   fitIBR <- df %>%
-    subset(., Condition == "IBR") %>% 
+    subset(., Experiment == "IBR") %>% 
     fitss()
   # extract model parameters
   rssI <- fitIBR$pen.crit

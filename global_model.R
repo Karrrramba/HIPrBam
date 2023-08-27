@@ -22,7 +22,7 @@ fit_bam <-  function(df){
   fit_null <- null_model(df)
   fit_alt <- alt_model(df)
   # perform Likrlihood ratio test
-  LRT <- anova(null_model, alt_model, test="LRT")
+  LRT <- anova(fit_null, fit_alt, test="LRT")
   #Extract the goodness of ti parameter (deviance)
   dev0 <-  LRT[1,2]
   devA <- LRT[2,2]
@@ -39,19 +39,23 @@ fit_bam <-  function(df){
 }
 
 completeData <- completeData %>% 
-  mutate(Condition = as.factor(Condition),
+  mutate(Experiment = as.factor(Experiment),
          Fraction = as.numeric(Fraction),
          Replicate = as.factor(Replicate))
 
 # Aplly model fitting to complete data set
 set.seed(123)
- <- data %>% 
+globalFit <- completeData %>% 
   group_by(UniprotID) %>% 
-  do(computeDeltaRSS_bam(.)) %>% 
+  do(fit_bam(.)) %>% 
   mutate(FDR = p.adjust(P_value, method = "BH"))
 
 # Apply Benjamini-Hochberg correction for multiple testing
-Significant <- %>% 
+# Significant <- 
+  globalFit %>% 
+    filter(DevDelta > 0) %>% 
+    summarise()
+  # %>% 
   filter(FDR <= 0.05)
 # Annotate significant proteins
 Significant %>% 
@@ -61,6 +65,6 @@ Significant %>%
 unbalanced_data <- 
   data %>%
   filter(UniprotID %in% correlated_prot$UniprotID) %>% 
-  mutate(Condition = as.factor(Condition),
+  mutate(Experiment = as.factor(Experiment),
          Fraction = as.numeric(Fraction),
          Replicate = as.factor(Replicate))

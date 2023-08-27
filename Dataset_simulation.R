@@ -8,33 +8,55 @@ library(knitr)
 library(fitdistrplus)
 library(metRology)
 
-
 # We will further consider only those proteins with reproducible HIC profiles. 
 # To do this we determine the inter-replicate correlation per protein.
 IBR_rep_diff <- data %>% 
-  subset(Condition == "IBR") %>% 
+  subset(Experiment == "IBR") %>% 
   pivot_wider(., names_from = "Replicate",
-              values_from = "RelAbundance") %>% 
+              values_from = "RelInt") %>% 
   rename("IBR_1" = "1", "IBR_2" = "2") %>% 
   group_by(UniprotID) %>%
   summarise(PearsonR = cor(IBR_1, IBR_2, method = "pearson"))
 
-correlated_prot <-
+correlated_prot90<-
   data%>% 
-  subset(Condition == "IBR") %>% 
+  subset(Experiment == "IBR") %>% 
   pivot_wider(., names_from = "Replicate",
-              values_from = "RelAbundance") %>% 
+              values_from = "RelInt") %>% 
   rename("IBR_1" = "1",
          "IBR_2" = "2") %>% 
   mutate(Difference = IBR_1 - IBR_2) %>% 
   left_join(., IBR_rep_diff, by = "UniprotID") %>%
   group_by(UniprotID) %>%
   # filter proteins with inter-replicate deviations >20% and Pearson <0.8
-  filter(PearsonR > 0.8,
+  filter(PearsonR > 0.9,
          all(abs(Difference) < 0.2)) %>% 
   ungroup()
 
+# Replicate Ctrl Rep1
+DataCopy <- data%>% 
+  group_by(UniprotID) %>% 
+  mutate(rep2 = if_else(RelInt > 0,
+                        RelInt+sample(SimDist,  size = 35, replace = TRUE)/100,
+                        0)) %>% 
+  melt(., id = c("UniprotID", "ProteinName", "GeneName", 
+                 "Experiment","Replicate", "Fraction")) %>%
+  filter(Experiment != "IBR" | variable != "rep2") %>% 
+  mutate(Replicate = ifelse(variable == "rep2", "2", Replicate)) %>% 
+  dplyr::select(-variable) %>% 
+  rename("RelInt" = "value") %>%
+  ungroup() %>% 
+  mutate(RelInt = if_else(RelInt<0, abs(RelInt), RelInt),
+         RelInt = if_else((Experiment == "Ctrl"& Replicate == 2),
+                                RelInt, RelInt))
+data %>% 
+  pivot_wider(., names_from = Replicate, values_from = RelInt) %>% 
+  rename("Rep_1" = "1",
+         "Rep_2" = "2") %>% 
+  mutate("Rep_2" = if_else(Experiment == "Ctrl", Rep_1, Rep_2)) %>% 
+  pivot_longer(c(), names_to = )
 
+# Simulate from IBR differences
 hist(test_dataset$Difference, freq = FALSE, breaks = 25)
 descdist(test_dataset$Difference, discrete = FALSE)
 

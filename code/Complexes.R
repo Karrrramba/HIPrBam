@@ -19,7 +19,7 @@ data_comp
 cor_profile <- complex_dat %>%
   mutate(Corum = strsplit(as.character(Corum), ";")) %>%
   unnest(Corum) %>%
-  group_by(Corum, Condition) %>%
+  group_by(Corum, Experiment) %>%
   summarise_each(funs(mean)) %>%
   .[-3] %>%
   pivot_longer(cols=3:37, names_to = "Fraction",  values_to = "RelativeIntensity")
@@ -38,8 +38,8 @@ IDlist <- read.table("CorumIDs.txt")
 #loop for profile plots of both conditions for each protein
 for (i in uniq_comp) {
   temp_plot = ggplot(data= subset(cor_profile, Corum == i), aes(fct_inorder(Fraction), RelativeIntensity))  +
-    geom_point(aes(group=Condition, color=Condition)) +
-    geom_line(size=1.0, aes(group=Condition, color = Condition), alpha=0.7) +
+    geom_point(aes(group=Experiment, color=Experiment)) +
+    geom_line(size=1.0, aes(group=Experiment, color = Experiment), alpha=0.7) +
     ggtitle(i) +
     scale_x_discrete(breaks = seq(1, 35, 2)) +
     scale_color_manual(values = c("#00FFFF", "#CC0066", "#003333")) +
@@ -81,9 +81,9 @@ IDlist
 row.names(IDlist$V2 == "(E.F.G) complex")
 
 #meanprofile plot
-temp_plotmean = data_gr %>% filter(Condition == "Ctrl" | Condition == "IBR") %>%
+temp_plotmean = data_gr %>% filter(Experiment == "Ctrl" | Experiment == "IBR") %>%
   ggplot(.) +
-  stat_summary(aes(fct_inorder(Fraction), RelativeIntensity, group=Condition, color=Condition), 
+  stat_summary(aes(fct_inorder(Fraction), RelativeIntensity, group=Experiment, color=Experiment), 
                fun = mean, geom = "line", size = 1, alpha) +
   ggtitle("Cytokine") +
   labs(x="Fraction",
@@ -104,8 +104,8 @@ temp_plotmean
 #loop for profile plots of both conditions for each protein
 for (i in uniq_comp) {
   temp <- ggplot(data= subset(cor_plot, ComplexID == i), aes(fct_inorder(Fraction), RelativeIntensity))  +
-    geom_point(aes(group=Condition, color=Condition)) +
-    geom_line(size=2, aes(group=Condition, color = Condition), alpha=0.4) +
+    geom_point(aes(group=Experiment, color=Experiment)) +
+    geom_line(size=2, aes(group=Experiment, color = Experiment), alpha=0.4) +
     ggtitle(i) +
     scale_x_discrete(breaks = seq(1, 35, 2)) +
     scale_color_manual(values = c("#00FFFF", "#CC0066", "#003333")) +

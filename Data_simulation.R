@@ -24,10 +24,10 @@ data
 
 #group elution profiles of each condition by gene name
 data_gr <- data %>%
-  group_by(Condition) %>%
+  group_by(Experiment) %>%
   pivot_longer(cols=3:37, names_to = "Fraction", values_to = "RelativeIntensity") %>% 
   rename("GeneID" = "Gene_names") %>%
-  subset(., Condition != "SILAC")
+  subset(., Experiment != "SILAC")
 
 data_gr$Fraction <- gsub("F","", as.character(data_gr$Fraction))
 
@@ -37,8 +37,8 @@ uniq_prot
 #loop for profile plots of both conditions for each protein
 for (i in uniq_prot) {
   temp_plot = ggplot(data= subset(data_gr, GeneID == i), aes(fct_inorder(Fraction), RelativeIntensity))  +
-    geom_point(aes(group=Condition, color=Condition), size = 0.5) +
-    geom_line(size=1.0, aes(group=Condition, color = Condition), alpha=0.6) +
+    geom_point(aes(group=Experiment, color=Experiment), size = 0.5) +
+    geom_line(size=1.0, aes(group=Experiment, color = Experiment), alpha=0.6) +
     ggtitle(i) +
     scale_x_discrete(breaks = seq(1, 35, 2)) +
     scale_y_continuous(sec.axis = sec_axis(~./2, name = "SILAC ratio")) +
@@ -73,9 +73,9 @@ repVar <- seq(from = -0.05, to = 0.05, by = 0.001)
 #         (RelativeIntensity*sample(repVar, size = 35, replace = TRUE)),
 #       rep3 = RelativeIntensity + 
 #         (RelativeIntensity*sample(repVar, size = 35, replace = TRUE)))  %>% 
-#     melt(., id = c("GeneID", "Condition", "Fraction")) %>% 
+#     melt(., id = c("GeneID", "Experiment", "Fraction")) %>% 
 #     rename("Replicate" = "variable")  %>% 
-#     rename("RelAbundance" = "value")  %>%
+#     rename("RelInt" = "value")  %>%
 #     mutate(Replicate = recode(Replicate, RelativeIntensity = "1", rep2 = "2", rep3 = "3"))
 #   
 # }
@@ -86,9 +86,9 @@ replicateAll <- data_gr %>%
       (RelativeIntensity*sample(repVar, size = 98910, replace = TRUE)),
     rep3 = RelativeIntensity + 
       (RelativeIntensity*sample(repVar, size = 98910, replace = TRUE)))  %>% 
-  melt(., id = c("GeneID", "Condition", "Fraction")) %>% 
+  melt(., id = c("GeneID", "Experiment", "Fraction")) %>% 
   rename("Replicate" = "variable")  %>% 
-  rename("RelAbundance" = "value")  %>%
+  rename("RelInt" = "value")  %>%
   mutate(Replicate = recode(Replicate, RelativeIntensity = "1", rep2 = "2", rep3 = "3"))
 
 # test <- replicateAll%>% 
@@ -104,17 +104,17 @@ LDHA <- data_gr %>%
       (RelativeIntensity*sample(repVar, size = 35, replace = TRUE)),
     rep3 = RelativeIntensity + 
       (RelativeIntensity*sample(repVar, size = 35, replace = TRUE)))  %>% 
-  melt(., id = c("GeneID", "Condition", "Fraction")) %>% 
+  melt(., id = c("GeneID", "Experiment", "Fraction")) %>% 
   rename("Replicate" = "variable")  %>% 
-  rename("RelAbundance" = "value")  %>%
+  rename("RelInt" = "value")  %>%
   mutate(Replicate = recode(Replicate, RelativeIntensity = "1", rep2 = "2", rep3 = "3"))
  
 
 
 # plot simulated data
 rep_plot = ggplot(data= LDHA,
-                  aes(x = fct_inorder(Fraction),y = RelAbundance)) + 
-  geom_point(aes(color = Condition, shape = Replicate),
+                  aes(x = fct_inorder(Fraction),y = RelInt)) + 
+  geom_point(aes(color = Experiment, shape = Replicate),
              position = position_dodge(width=0.4), size = 2) +
   ggtitle("LDHA") +
   scale_x_discrete(breaks = seq(1, 35, 2)) +
@@ -126,7 +126,7 @@ print(rep_plot)
 
 # create function to generate smoothing spline
 fitss <-  function(x){
-  with(x, ss(Fraction, RelAbundance,
+  with(x, ss(Fraction, RelInt,
               all.knots = TRUE,
               keep.data = TRUE))
 }
@@ -157,22 +157,22 @@ print(LDHA_nullRes)
 # For the alternative model we group the replicate data by condition and fit the alternative model for each condition separately.
 
 LDHA_alt2 <- LDHA_simba %>%
-  group_by(Condition) %>%
+  group_by(Experiment) %>%
   do(fitss(x = .)) %>%
   ungroup(.)
 
 altfit_c <- data.frame(Fraction = as.character(LDHA_alt[[2]][[1]]$data$x),
-                           RelAbundance = LDHA_alt[[2]][[1]]$data$y,
+                           RelInt = LDHA_alt[[2]][[1]]$data$y,
                            altResiduals = residuals.ss(LDHA_alt[[2]][[1]]),
                            altPredicted = fitted.ss(LDHA_alt[[2]][[1]]),
-                       Condition = "Ctrl",
+                       Experiment = "Ctrl",
                        Replicate = as.character(rep(c(1,2,3), each=35)))
 
 altfit_i <- data.frame(Fraction = as.character(LDHA_alt[[2]][[2]]$data$x),
-                       RelAbundance = LDHA_alt[[2]][[2]]$data$y,
+                       RelInt = LDHA_alt[[2]][[2]]$data$y,
                        altResiduals = residuals.ss(LDHA_alt[[2]][[2]]),
                        altPredicted = fitted.ss(LDHA_alt[[2]][[2]]),
-                       Condition = "IBR",
+                       Experiment = "IBR",
                        Replicate = as.character(rep(c(1,2,3), each=35)))
 
 # Join predicted values and residuals from both models and append to the original data.
@@ -180,15 +180,15 @@ LDHAAltPar <- rbind(altfit_c, altfit_i)
 
 LDHA_fit <- LDHA_fit %>%
   left_join(LDHAAltPar, 
-            by = c("RelAbundance", "Fraction", 
-                   "Condition", "Replicate")) %>%
+            by = c("RelInt", "Fraction", 
+                   "Experiment", "Replicate")) %>%
   distinct()
 
 
 # Next we can plot null and alternative models.
 LDHA_plot <- LDHA_plot +
-  geom_line(data = distinct(LDHA_fit, Fraction, Condition, altPredicted, .keep_all = FALSE),
-            aes(y = altPredicted, group = Condition, color = Condition),
+  geom_line(data = distinct(LDHA_fit, Fraction, Experiment, altPredicted, .keep_all = FALSE),
+            aes(y = altPredicted, group = Experiment, color = Experiment),
             size = 1)
 
 print(LDHA_plot)
@@ -220,9 +220,9 @@ simulateReps <-  function(df){
       rep3 = RelativeIntensity + 
         (RelativeIntensity*factor3)) %>%
     subset(., select = -c(5,7)) %>% 
-    melt(., id = c("GeneID", "Condition", "Fraction")) %>% 
+    melt(., id = c("GeneID", "Experiment", "Fraction")) %>% 
     rename("Replicate" = "variable")  %>% 
-    rename("RelAbundance" = "value")  %>%
+    rename("RelInt" = "value")  %>%
     mutate(Replicate = recode(Replicate, RelativeIntensity = "1", rep2 = "2", rep3 = "3"))
 }
 
@@ -239,18 +239,18 @@ test <- data_gr %>%
   
 
 #plot smooth functions
-smoothctrl_plot = ggplot(data= subset(LDHA_simba, Condition == "Ctrl"),
+smoothctrl_plot = ggplot(data= subset(LDHA_simba, Experiment == "Ctrl"),
                          aes(fct_inorder(Fraction),value)) + 
-  geom_point(aes(group=Condition, shape=Experiment), 
+  geom_point(aes(group=Experiment, shape=Experiment), 
              fill="black", color= "black", size = 2) +
   geom_line(aes(group=Experiment), color= "black", linetype = "dotted",
             alpha=0.3, size=0.1) +
   stat_smooth(method = "loess", formula = y ~ x,
-              aes(group=Condition, color="smooth function"),  
+              aes(group=Experiment, color="smooth function"),  
               linetype = 0, size = 0,
               span = 0.1, se= TRUE, show.legend = FALSE) +
   stat_smooth(method = "loess", formula = y ~ x, 
-              aes(group=Condition, color="smooth function"),
+              aes(group=Experiment, color="smooth function"),
               alpha = 0.4, color = alpha("#00FFFF", .4),
               size = 2, span = 0.1, se = FALSE) +
   scale_x_discrete(breaks = seq(1, 35, 2)) +
@@ -278,18 +278,18 @@ smoothctrl_plot
 
 
 
-smoothIBR_plot = ggplot(data= subset(LDHA_simba, Condition == "IBR"),
+smoothIBR_plot = ggplot(data= subset(LDHA_simba, Experiment == "IBR"),
                          aes(fct_inorder(Fraction),value)) + 
-  geom_point(aes(group=Condition, shape=Experiment), 
+  geom_point(aes(group=Experiment, shape=Experiment), 
              fill="black", color= "black", size = 2) +
   geom_line(aes(group=Experiment), color= "black", linetype = "dotted",
             alpha=0.3, size=0.1) +
   stat_smooth(method = "loess", formula = y ~ x,
-              aes(group=Condition, color="smooth function"),  
+              aes(group=Experiment, color="smooth function"),  
               linetype = 0, size = 0,
               span = 0.1, se= TRUE, show.legend = FALSE) +
   stat_smooth(method = "loess", formula = y ~ x, 
-              aes(group=Condition, color="smooth function"),
+              aes(group=Experiment, color="smooth function"),
               alpha = 0.4, color = alpha("#CC0066", .4),
               size = 2, span = 0.1, se = FALSE) +
   scale_x_discrete(breaks = seq(1, 35, 2)) +
@@ -324,11 +324,11 @@ smooth_plot = ggplot(data= subset(LDHA_simba,
                      aes(fct_inorder(Fraction),value)) +
   geom_line(aes(group = Fraction), linetype = 3, size = 1) +
   stat_smooth(method = "loess", formula = y ~ x,
-              aes(group=Condition, color=Condition),  
+              aes(group=Experiment, color=Experiment),  
               linetype = 0, size = 0,
               span = 0.1, se= TRUE, show.legend = FALSE) +
   stat_smooth(method = "loess", formula = y ~ x, 
-              aes(group=Condition, color=Condition),
+              aes(group=Experiment, color=Experiment),
               size = 2, span = 0.1, se = FALSE) +
   scale_color_manual(values = c("#00FFFF", "#CC0066", "#003333"))+
   scale_x_discrete(breaks = seq(1, 35, 2)) +
@@ -366,7 +366,7 @@ ggsave(prob_grid, file=paste("smoothing_principle.png"), dpi = 1200,
 refsmooth_plot = ggplot(data= subset(LDHA_simba, 
                                      Experiment == "Ctrl rep1" |Experiment  == "IBR rep1"),
                      aes(fct_inorder(Fraction),value)) +
-  geom_point(aes(shape = Experiment, color = Condition), size = 2) +
+  geom_point(aes(shape = Experiment, color = Experiment), size = 2) +
   stat_smooth(method = "loess", formula = y ~ x,
               linetype = 1, size = 2,
               span = 0.1, se= TRUE, show.legend = FALSE) +
@@ -400,9 +400,9 @@ LDHA_c1 <- LDHA_simba %>%
   subset(., Experiment == "Ctrl rep1")
 
 LDHA_c <- LDHA_simba %>%
-  subset(., Condition == "Ctrl")
+  subset(., Experiment == "Ctrl")
 LDHA_i <- LDHA_simba %>%
-  subset(., Condition == "IBR")
+  subset(., Experiment == "IBR")
 
 
 mod.ss.merged <- with(LDHA_simba, ss(Fraction, value, all.knots = TRUE, keep.data = TRUE))
@@ -417,7 +417,7 @@ summary(mod.ss.merged)
 
 
 nullPrediction <- LDHA_simba %>%
-  group_by(Condition) %>%
+  group_by(Experiment) %>%
   do({
     fit = fitss(.)
   }) %>%

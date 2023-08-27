@@ -11,7 +11,7 @@ library(metRology)
 
 # Model functions
 null_model <- function(df){
-  with(df, bam(RelAbundance ~ s(Fraction, k = 35) + factor(as.factor(Condition)) + factor(as.factor(Replicate)),
+  with(df, bam(RelAbundance ~ s(Fraction, k = 35) + factor(as.factor(Experiment)) + factor(as.factor(Replicate)),
                data = df,
                method = "REML",
                family = gaussian(),
@@ -19,7 +19,7 @@ null_model <- function(df){
 }
 
 alt_model <- function(df){
-  with(df, bam(RelAbundance ~ s(Fraction, k = 35, by=factor(as.factor(Condition))) + factor(as.factor(Replicate)),
+  with(df, bam(RelAbundance ~ s(Fraction, k = 35, by=factor(as.factor(Experiment))) + factor(as.factor(Replicate)),
                data = df,
                method = "REML",
                family = gaussian(),

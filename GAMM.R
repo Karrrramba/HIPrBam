@@ -39,7 +39,7 @@ computeDeltaRSS_bam <-  function(df){
 }
 
 completeData <- completeData %>% 
-   mutate(Condition = as.factor(Condition),
+   mutate(Experiment = as.factor(Experiment),
           Fraction = as.numeric(Fraction),
           Replicate = as.factor(Replicate))
 
@@ -48,7 +48,7 @@ completeData <- completeData %>%
 unbalanced_data <- 
   data %>%
     filter(UniprotID %in% correlated_prot$UniprotID) %>% 
-    mutate(Condition = as.factor(Condition),
+    mutate(Experiment = as.factor(Experiment),
            Fraction = as.numeric(Fraction),
            Replicate = as.factor(Replicate))
 

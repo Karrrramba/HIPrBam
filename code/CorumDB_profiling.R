@@ -27,7 +27,7 @@ my_fcg
 cor_set <- my_dat %>%
   mutate(Corum = strsplit(as.character(Corum), ";")) %>%
   unnest(Corum) %>%
-  group_by(Corum, Condition) %>%
+  group_by(Corum, Experiment) %>%
   summarise_each(funs(mean)) %>%
   .[-3] 
 
@@ -66,7 +66,7 @@ write.csv(data_fcg_annot, "data_fcg_matched.csv")
 #transform into long format for plotting
 cor_plot <- data_annot %>% 
   .[, -c(2, 39:43)] %>% 
-  group_by(ComplexID, Condition) %>%
+  group_by(ComplexID, Experiment) %>%
   pivot_longer(cols=3:37, names_to = "Fraction",  values_to = "RelativeIntensity")
 
 #4.1 tidy up data frame from annotations and 
@@ -74,7 +74,7 @@ cor_plot <- data_annot %>%
 # uncomment to use
 #fcg_plot <- mydat_fcg %>% 
   .[, -c(2, 39:44)] %>% 
-  group_by(ComplexID, Condition) %>%
+  group_by(ComplexID, Experiment) %>%
   pivot_longer(cols=3:37, names_to = "Fraction",  values_to = "RelativeIntensity")
 # in #6 "cor_plot must be changed to "fcg_plot
   
@@ -85,8 +85,8 @@ uniq_comp
 #6 loop for profile plots of both conditions for each CorumID
 for (i in uniq_comp) {
   temp_plot = ggplot(data= subset(cor_plot, ComplexID == i), aes(fct_inorder(Fraction), RelativeIntensity))  +
-    geom_point(aes(group=Condition, color=Condition)) +
-    geom_line(size=2.0, aes(group=Condition, color = Condition), alpha=0.5) +
+    geom_point(aes(group=Experiment, color=Experiment)) +
+    geom_line(size=2.0, aes(group=Experiment, color = Experiment), alpha=0.5) +
     ggtitle(i) +
     scale_x_discrete(breaks = seq(1, 35, 2)) +
     scale_color_manual(values = c("#00FFFF", "#CC0066", "#003333")) +
@@ -107,8 +107,8 @@ for (i in uniq_comp) {
 
 
   temp_plot2 = ggplot(data= subset(cor_plot, ComplexID == "1743"), aes(fct_inorder(Fraction), RelativeIntensity))  +
-    geom_point(aes(group=Condition, color=Condition)) +
-    geom_line(size=1.0, aes(group=Condition, color = Condition), alpha=0.7) +
+    geom_point(aes(group=Experiment, color=Experiment)) +
+    geom_line(size=1.0, aes(group=Experiment, color = Experiment), alpha=0.7) +
     ggtitle(i) +
     scale_x_discrete(breaks = seq(1, 35, 2)) +
     scale_color_manual(values = c("#00FFFF", "#CC0066", "#003333")) +
