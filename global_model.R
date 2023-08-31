@@ -48,7 +48,8 @@ set.seed(123)
 globalFit <- completeData %>% 
   group_by(UniprotID) %>% 
   do(fit_bam(.)) %>% 
-  mutate(FDR = p.adjust(P_value, method = "BH"))
+  mutate(FDR = p.adjust(P_value, method = "BH")) %>% 
+  ungroup()
 
 # Apply Benjamini-Hochberg correction for multiple testing
 # Significant <- 
