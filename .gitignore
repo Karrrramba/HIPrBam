@@ -50,3 +50,12 @@ rsconnect/
 
 # raw data
 data/
+
+#playground scripts
+distribution_scaling.R
+fitting_example.R
+
+# things to come
+Enrichment_analysis.R
+Scatterplot.R
+BABRO-HIC
