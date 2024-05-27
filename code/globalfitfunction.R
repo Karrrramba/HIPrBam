@@ -14,10 +14,48 @@ library(XICOR)
 # Import HIC-MS/MS data set. This data table was created from the ProteinGroups table of the MaxQuant output.
 # After filtering for false positives (reverse) and contaminants, only proteins quantified in both experiments and/or replicates (IBR) were considered.
 # Relative intensities were calculated by dividing the intensity in each fraction by the summed intensity for the respective protein group and label.
-data <- read.delim(file.choose())
 
-# Inspect the imported data table.
-sapply(data, class)
+data <- readr::read_tsv("data-raw/proteinGroups.txt", 
+                       col_types = cols(
+                         .default = col_guess(), 
+                         'Reverse' = col_character(), 
+                         'Contaminant' = col_character()), 
+                       col_select = c(
+                         'Protein IDs', 
+                         'Majority protein IDs', 
+                         'Protein names', 
+                         'Gene names', 
+                         'Peptides', 
+                         'Razor + unique peptides',
+                         'Reverse',
+                         'Contaminant',
+                         starts_with("Intensity")
+                         )
+                )
+
+clean_data <- function(data){
+  # Remove reverse and contaminants
+  del_row <- which(data[, 'Reverse'] == "+" | data[, 'Contaminant'] == "+")
+  del_col <- which(names(data) == 'Reverse' | names(data) == 'Contaminant')
+  valid_vals <- data[-del, -del_col]
+  # Clean names
+  clean_data <- janitor::clean_names(valid_vals, abbreviations = "ID")
+  clean_data
+}
+
+transform_table <- function(data){
+  # Assign unique gene names
+  
+  # Separate experiments
+  
+  # Extract experiment
+  
+  # Extract replicate
+  
+  # Calculate relative intensities
+  
+  
+}
 
 #We will clean up our data table and transform it into long format.
 data <- data %>%
