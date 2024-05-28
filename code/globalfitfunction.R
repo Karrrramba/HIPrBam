@@ -28,6 +28,7 @@ data <- readr::read_tsv("data-raw/proteinGroups.txt",
                          'Gene names', 
                          'Peptides', 
                          'Razor + unique peptides',
+                         tidyselect::matches('(\\((.+)?unique\\))'),
                          'Reverse',
                          'Contaminant',
                          tidyselect::matches("(^Intensity\\s(M|H|L))")
@@ -37,34 +38,55 @@ data <- readr::read_tsv("data-raw/proteinGroups.txt",
 clean_data <- function(data){
   # Remove reverse and contaminants
   del_row <- which(data[, 'Reverse'] == "+" | data[, 'Contaminant'] == "+")
-  del_col <- which(names(data) %in% c('Reverse', 'Contaminant', 'Intensity'))
+  del_col <- which(names(data) %in% c('Reverse', 'Contaminant'))
   valid_vals <- data[-del_row, -del_col]
+  
   # Clean names
-  clean_data <- janitor::clean_names(valid_vals, abbreviations = "ID")
+  cleaned_data <- janitor::clean_names(valid_vals, abbreviations = "ID")
   names(clean_data) <- stringr::str_remove(names(clean_data), "_s$")
-  clean_data
+  
+  cleaned_data
+  
+  # keep only first gene name entry
+  # sapply(strsplit(as.character(data_clean[,"gene_names"]), ";"),function(x){x[1]})
+  
+  # # Remove duplicate entries
+  # duplicate_gene_names <- cleaned_data %>% 
+  # count(gene_names) %>% 
+  # filter(n > 1)
+  
+  # duplicate_genes <- data_clean %>% 
+  # inner_join(duplicate_gene_names, by = 'gene_names') %>% 
+  # filter(!is.na(gene_names))
+  
+  # cleaned_data <- select(clean_dataed, -c())
+  # annotation <<- select(cleaned_data, c(gene_names, uniprot_id))
 }
 
 data_clean <- clean_data(data)
-long <- data_clean %>% 
-  tidyr::pivot_longer(
-    # cols = matches("_[a-z]_f[0-9]"),
-    cols = matches("_m|l|h"),
-    names_to = 'fraction',
-    values_to = 'intensity'
-  )
+
 
 transform_table <- function(data){
+  
+  long <- data %>% 
+    tidyr::pivot_longer(
+      cols = matches('_f.+'),
+      names_to = c('experiment', 'fraction'),
+      names_pattern =  "intensity_(.)_f(.*)",
+      values_to = 'intensity',
+      values_transform = list(fraction = is.numeric)
+    ) 
+  
+  rel <- long %>% 
+    mutate(rel_intensity = case_when(
+      experiment == 'l' ~ round(intensity / intensity_l * 100, 1),
+      experiment == 'm' ~ round(intensity / intensity_m * 100, 1),
+      TRUE ~ round(intensity / intensity_h * 100, 1)
+    )) %>% 
+    select(starts_with('intensity'))
+  
+  
   # Assign unique gene names
-  
-  # Separate experiments
-  
-    
-  # Extract experiment
-  
-  # Extract replicate
-  
-  # Calculate relative intensities
   
 }
 
