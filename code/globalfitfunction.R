@@ -19,7 +19,8 @@ data <- readr::read_tsv("data-raw/proteinGroups.txt",
                        col_types = cols(
                          .default = col_guess(), 
                          'Reverse' = col_character(), 
-                         'Contaminant' = col_character()), 
+                         'Contaminant' = col_character()
+                         ), 
                        col_select = c(
                          'Protein IDs', 
                          'Majority protein IDs', 
@@ -29,31 +30,41 @@ data <- readr::read_tsv("data-raw/proteinGroups.txt",
                          'Razor + unique peptides',
                          'Reverse',
                          'Contaminant',
-                         starts_with("Intensity")
+                         tidyselect::matches("(^Intensity\\s(M|H|L))")
                          )
                 )
 
 clean_data <- function(data){
   # Remove reverse and contaminants
   del_row <- which(data[, 'Reverse'] == "+" | data[, 'Contaminant'] == "+")
-  del_col <- which(names(data) == 'Reverse' | names(data) == 'Contaminant')
-  valid_vals <- data[-del, -del_col]
+  del_col <- which(names(data) %in% c('Reverse', 'Contaminant', 'Intensity'))
+  valid_vals <- data[-del_row, -del_col]
   # Clean names
   clean_data <- janitor::clean_names(valid_vals, abbreviations = "ID")
+  names(clean_data) <- stringr::str_remove(names(clean_data), "_s$")
   clean_data
 }
+
+data_clean <- clean_data(data)
+long <- data_clean %>% 
+  tidyr::pivot_longer(
+    # cols = matches("_[a-z]_f[0-9]"),
+    cols = matches("_m|l|h"),
+    names_to = 'fraction',
+    values_to = 'intensity'
+  )
 
 transform_table <- function(data){
   # Assign unique gene names
   
   # Separate experiments
   
+    
   # Extract experiment
   
   # Extract replicate
   
   # Calculate relative intensities
-  
   
 }
 
