@@ -1,13 +1,14 @@
 #load necessary packages
-library(tidyverse)
-library(reshape2)
-library(ggpubr)
-library(scales)
-library(mgcv)
 library(broom)
-library(knitr)
 library(fitdistrplus)
+library(ggpubr)
+library(knitr)
 library(metRology)
+library(mgcv)
+library(reshape2)
+library(scales)
+library(tidyverse)
+library(UniprotR)
 library(XICOR)
 
 # 1. Data import ----
@@ -42,29 +43,68 @@ clean_data <- function(data){
   valid_vals <- data[-del_row, -del_col]
   
   # Clean names
-  cleaned_data <- janitor::clean_names(valid_vals, abbreviations = "ID")
-  names(clean_data) <- stringr::str_remove(names(clean_data), "_s$")
+  cleaned_names <- janitor::clean_names(valid_vals, abbreviations = "ID")
+  names(cleaned_names) <- stringr::str_remove(names(cleaned_names), "_s$")
   
-  cleaned_data
+  # Retrieve gene names from uniprot based on protein_id
   
-  # keep only first gene name entry
-  # sapply(strsplit(as.character(data_clean[,"gene_names"]), ";"),function(x){x[1]})
   
-  # # Remove duplicate entries
-  # duplicate_gene_names <- cleaned_data %>% 
-  # count(gene_names) %>% 
-  # filter(n > 1)
+  # Keep only protein entries with the highest number of assigned razor and unique peptides
+  # duplicate_gene_names <- cleaned_data %>%
+  #   count(gene_names) %>%
+  #   filter(n > 1) %>% 
+  #   pull(gene_names)
   
-  # duplicate_genes <- data_clean %>% 
-  # inner_join(duplicate_gene_names, by = 'gene_names') %>% 
-  # filter(!is.na(gene_names))
+  # duplicate_indexes <- which(clean_names$gene_names %in% duplicate_gene_names)
   
-  # cleaned_data <- select(clean_dataed, -c())
+  # pivot longer, separate razor+unique peptides and uniprot ids, then filter for highest number of pep
+  
+  # sapply(strsplit(as.character(data_clean[,"gene_names"]), ";"), function(x){x[1]})
+  # cleaned_data <- select(clean_data, -c())
   # annotation <<- select(cleaned_data, c(gene_names, uniprot_id))
+  
+  # cleaned_data
+  cleaned_names
 }
 
 data_clean <- clean_data(data)
 
+
+duplicate_gene_names <- data_clean %>% 
+  count(gene_names) %>%
+  filter(n > 1) %>% 
+  pull(gene_names)
+
+duplicates_df <- data_clean %>% 
+  filter(gene_names %in% duplicate_gene_names)
+
+duplicates_long <- duplicates_df %>% 
+  # filter(!is.na(gene_names)) %>% 
+  arrange(gene_names) %>% 
+  group_by(gene_names) %>% 
+  separate_longer_delim(c(protein_id, peptide_counts_razor_unique, peptide_counts_unique), delim = ";")
+
+duplicates_long %>% 
+  group_by(gene_names, majority_protein_id) %>% 
+  filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
+  # Retrieve gene name based on protein_id
+  mutate(gene_names = case_when(
+    is.na(gene_names) ~ ,
+    .default = TRUE
+  )) %>% 
+  view()
+
+# Keep only protein entries which were quantified in all experiments
+data_clean %>% 
+  filter(!if_any(c(intensity_l, intensity_m, intensity_h), ~.x == 0))
+
+
+
+data_clean %>% 
+  mutate(gene_names %in% tidyr::separate_longer_delim(gene_names, delim = ";"))
+
+
+strsplit(as.character(data_clean[,"gene_names"]), ";")
 
 transform_table <- function(data){
   
@@ -90,7 +130,7 @@ transform_table <- function(data){
   
 }
 
-#We will clean up our data table and transform it into long format.
+# clean up our data table and transform it into long format.
 data <- data %>%
   rename(
     "UniprotID" = "Majority.protein.IDs",
