@@ -40,14 +40,32 @@ clean_data <- function(data){
   # Remove reverse and contaminants
   del_row <- which(data[, 'Reverse'] == "+" | data[, 'Contaminant'] == "+")
   del_col <- which(names(data) %in% c('Reverse', 'Contaminant'))
-  valid_vals <- data[-del_row, -del_col]
+  data <- data[-del_row, -del_col]
   
   # Clean names
-  cleaned_names <- janitor::clean_names(valid_vals, abbreviations = "ID")
+  cleaned_names <- janitor::clean_names(valid_data, abbreviations = "ID")
   names(cleaned_names) <- stringr::str_remove(names(cleaned_names), "_s$")
   
-  # Retrieve gene names from uniprot based on protein_id
+  # Remove proteins entries with 0 intensities in any of the replicates
+  valid_data <- data %>% 
+    filter(!if_any(c(intensity_l, intensity_m, intensity_h), ~.x == 0))
   
+  # Clea
+  data_annotated <- cleaned_names %>% 
+    arrange(gene_names) %>% 
+    group_by(gene_names) %>% 
+    separate_longer_delim(c(protein_id, peptide_counts_razor_unique, peptide_counts_unique), delim = ";") %>% 
+    group_by(gene_names, majority_protein_id) %>% 
+    filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
+    # Retrieve gene name based on protein_id
+    mutate(gene_names = case_when(
+      is.na(gene_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"),
+      .default = gene_names
+    )) %>% 
+    mutate(protein_names = case_when(
+      is.na(protein_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name"),
+      .default = protein_names
+    ))
   
   # Keep only protein entries with the highest number of assigned razor and unique peptides
   # duplicate_gene_names <- cleaned_data %>%
@@ -84,24 +102,6 @@ duplicates_long <- duplicates_df %>%
   group_by(gene_names) %>% 
   separate_longer_delim(c(protein_id, peptide_counts_razor_unique, peptide_counts_unique), delim = ";")
 
-duplicates_long %>% 
-  group_by(gene_names, majority_protein_id) %>% 
-  filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
-  # Retrieve gene name based on protein_id
-  mutate(gene_names = case_when(
-    is.na(gene_names) ~ ,
-    .default = TRUE
-  )) %>% 
-  view()
-
-# Keep only protein entries which were quantified in all experiments
-data_clean %>% 
-  filter(!if_any(c(intensity_l, intensity_m, intensity_h), ~.x == 0))
-
-
-
-data_clean %>% 
-  mutate(gene_names %in% tidyr::separate_longer_delim(gene_names, delim = ";"))
 
 
 strsplit(as.character(data_clean[,"gene_names"]), ";")
