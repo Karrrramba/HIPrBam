@@ -29,6 +29,7 @@ data <- readr::read_tsv("data-raw/proteinGroups.txt",
                          'Gene names', 
                          'Peptides', 
                          'Razor + unique peptides',
+                         'Peptide counts razor + unique'
                          tidyselect::matches('(\\((.+)?unique\\))'),
                          'Reverse',
                          'Contaminant',
@@ -36,77 +37,62 @@ data <- readr::read_tsv("data-raw/proteinGroups.txt",
                          )
                 )
 
+
 clean_data <- function(data){
+  # Make clean column names
+  data <- janitor::clean_names(data, abbreviations = "ID")
+  names(data) <- stringr::str_remove(names(data), "_s$")
+  
   # Remove reverse and contaminants
-  del_row <- which(data[, 'Reverse'] == "+" | data[, 'Contaminant'] == "+")
-  del_col <- which(names(data) %in% c('Reverse', 'Contaminant'))
+  del_row <- which(data[, 'reverse'] == "+" | data[, 'contaminant'] == "+")
+  del_col <- which(names(data) %in% c('reverse', 'contaminant'))
   data <- data[-del_row, -del_col]
   
-  # Clean names
-  cleaned_names <- janitor::clean_names(valid_data, abbreviations = "ID")
-  names(cleaned_names) <- stringr::str_remove(names(cleaned_names), "_s$")
-  
   # Remove proteins entries with 0 intensities in any of the replicates
-  valid_data <- data %>% 
-    filter(!if_any(c(intensity_l, intensity_m, intensity_h), ~.x == 0))
-  
-  # Clea
-  data_annotated <- cleaned_names %>% 
-    arrange(gene_names) %>% 
-    group_by(gene_names) %>% 
-    separate_longer_delim(c(protein_id, peptide_counts_razor_unique, peptide_counts_unique), delim = ";") %>% 
-    group_by(gene_names, majority_protein_id) %>% 
-    filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
-    # Retrieve gene name based on protein_id
-    mutate(gene_names = case_when(
-      is.na(gene_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"),
-      .default = gene_names
-    )) %>% 
-    mutate(protein_names = case_when(
-      is.na(protein_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name"),
-      .default = protein_names
-    ))
-  
-  # Keep only protein entries with the highest number of assigned razor and unique peptides
-  # duplicate_gene_names <- cleaned_data %>%
-  #   count(gene_names) %>%
-  #   filter(n > 1) %>% 
-  #   pull(gene_names)
-  
-  # duplicate_indexes <- which(clean_names$gene_names %in% duplicate_gene_names)
-  
-  # pivot longer, separate razor+unique peptides and uniprot ids, then filter for highest number of pep
-  
-  # sapply(strsplit(as.character(data_clean[,"gene_names"]), ";"), function(x){x[1]})
-  # cleaned_data <- select(clean_data, -c())
-  # annotation <<- select(cleaned_data, c(gene_names, uniprot_id))
-  
-  # cleaned_data
-  cleaned_names
+  data <- data %>% 
+    filter(!if_any(c(intensity_l, intensity_m, intensity_h), ~.x == 0)) %>% 
+    
+  # Add gene_names an
+  data
 }
 
 data_clean <- clean_data(data)
 
+# pivot long, filter protein ID based on unique peptides, add_names(), reduce to one gene name
+# use protein id for downstream analysis?
+# pivot long
 
-duplicate_gene_names <- data_clean %>% 
-  count(gene_names) %>%
-  filter(n > 1) %>% 
-  pull(gene_names)
+data_filtered <- data_clean %>%
+  arrange(gene_names) %>%
+  # group_by(gene_names) %>%
+  separate_longer_delim(c(protein_id, peptide_counts_razor_unique, peptide_counts_unique), delim = ";") %>% 
+  group_by(gene_names) %>%
+  filter(peptide_counts_razor_unique == peptides) %>% 
+  summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
+  ungroup()
 
-duplicates_df <- data_clean %>% 
-  filter(gene_names %in% duplicate_gene_names)
+missing_entries <- data_clean[is.na(data_clean$gene_names) | is.na(data_clean$protein_names), 1:7]
+missing_entries <- missing_entries %>% 
+  separate_longer_delim(c(protein_id, peptide_counts_razor_unique), delim = ";") %>% 
+  group_by(majority_protein_id) %>% 
+  mutate(gene_names = case_when(
+    is.na(gene_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"),
+    .default = gene_names
+  )) %>% 
+  group_by(gene_names) %>%
+  filter(peptide_counts_razor_unique == razor_unique_peptides) %>% 
+  mutate(gene_names = str_remove(gene_names, "(//W.*)")) %>% 
+  mutate(protein_names = case_when(
+    is.na(protein_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name"),
+    .default = protein_names
+  )) %>% 
+  filter(!is.na(gene_names))
+  
+missing_genes %>% 
+  filter(!gene_names ) %>% 
+  mutate(gene_names = str_remove(gene_names, "(//W.*)"))
 
-duplicates_long <- duplicates_df %>% 
-  # filter(!is.na(gene_names)) %>% 
-  arrange(gene_names) %>% 
-  group_by(gene_names) %>% 
-  separate_longer_delim(c(protein_id, peptide_counts_razor_unique, peptide_counts_unique), delim = ";")
-
-
-
-strsplit(as.character(data_clean[,"gene_names"]), ";")
-
-transform_table <- function(data){
+transform_intensities <- function(data){
   
   long <- data %>% 
     tidyr::pivot_longer(
