@@ -27,9 +27,7 @@ data <- readr::read_tsv("data-raw/proteinGroups.txt",
                          'Majority protein IDs', 
                          'Protein names', 
                          'Gene names', 
-                         'Peptides', 
-                         'Razor + unique peptides',
-                         'Peptide counts razor + unique'
+                         'Peptides',
                          tidyselect::matches('(\\((.+)?unique\\))'),
                          'Reverse',
                          'Contaminant',
@@ -50,7 +48,7 @@ clean_data <- function(data){
   
   # Remove proteins entries with 0 intensities in any of the replicates
   data <- data %>% 
-    filter(!if_any(c(intensity_l, intensity_m, intensity_h), ~.x == 0)) %>% 
+    filter(!if_any(c(intensity_l, intensity_m, intensity_h), ~.x == 0))
     
   # Add gene_names an
   data
@@ -58,39 +56,46 @@ clean_data <- function(data){
 
 data_clean <- clean_data(data)
 
-# pivot long, filter protein ID based on unique peptides, add_names(), reduce to one gene name
-# use protein id for downstream analysis?
-# pivot long
 
-data_filtered <- data_clean %>%
-  arrange(gene_names) %>%
-  # group_by(gene_names) %>%
-  separate_longer_delim(c(protein_id, peptide_counts_razor_unique, peptide_counts_unique), delim = ";") %>% 
-  group_by(gene_names) %>%
-  filter(peptide_counts_razor_unique == peptides) %>% 
-  summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
-  ungroup()
+# add_names(), reduce to one gene name
+# remove majority protein id
+# export annotations table to global env
+# keep protein id for downstream analysis
 
-missing_entries <- data_clean[is.na(data_clean$gene_names) | is.na(data_clean$protein_names), 1:7]
-missing_entries <- missing_entries %>% 
-  separate_longer_delim(c(protein_id, peptide_counts_razor_unique), delim = ";") %>% 
-  group_by(majority_protein_id) %>% 
-  mutate(gene_names = case_when(
-    is.na(gene_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"),
-    .default = gene_names
-  )) %>% 
-  group_by(gene_names) %>%
-  filter(peptide_counts_razor_unique == razor_unique_peptides) %>% 
-  mutate(gene_names = str_remove(gene_names, "(//W.*)")) %>% 
-  mutate(protein_names = case_when(
-    is.na(protein_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name"),
-    .default = protein_names
-  )) %>% 
-  filter(!is.na(gene_names))
+add_missing_names <- function(data){
   
-missing_genes %>% 
-  filter(!gene_names ) %>% 
-  mutate(gene_names = str_remove(gene_names, "(//W.*)"))
+  data_long <- data_clean %>% 
+    separate_longer_delim(c(protein_id, peptide_counts_razor_unique), delim = ";")
+  
+  missing_entries <- data_clean[is.na(data_clean$gene_names) | is.na(data_clean$protein_names), 1:7]
+    
+  complete_names <- missing_entries %>% 
+    separate_longer_delim(c(protein_id, peptide_counts_razor_unique), delim = ";") %>% 
+    group_by(majority_protein_id) %>% 
+    mutate(gene_names = case_when(
+      is.na(gene_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"),
+      .default = gene_names
+    )) %>% 
+    filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
+    ungroup() %>% 
+    mutate(gene_names = gsub("( |;).*", "", gene_names)) %>% 
+    mutate(protein_names = case_when(
+      is.na(protein_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name"),
+      .default = protein_names
+    )) %>% 
+    filter(protein_names != "deleted")
+  
+  complete_names %>% 
+    group_by(majority_protein_id) %>% 
+    summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
+    ungroup()
+  
+  # Merge annotations to data_long or transform intensities first to reduce dimensions
+  
+  
+  # Collapse protein ids to gene names
+}
+
 
 transform_intensities <- function(data){
   
@@ -110,9 +115,6 @@ transform_intensities <- function(data){
       TRUE ~ round(intensity / intensity_h * 100, 1)
     )) %>% 
     select(starts_with('intensity'))
-  
-  
-  # Assign unique gene names
   
 }
 
