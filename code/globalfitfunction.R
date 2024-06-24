@@ -62,32 +62,54 @@ data_clean <- clean_data(data)
 # export annotations table to global env
 # keep protein id for downstream analysis
 
+data_clean %>% 
+  pivot_longer(
+    cols = tidyselect::matches("([l|m|h]_f.+)"),
+    names_to = c("experiment", "fraction"),
+    names_pattern = "intensity_(.)_f(.)",
+    values_to = "intensity"
+      ) %>% 
+  mutate(relative_intensity = in) %>% 
+  view()
+
 add_missing_names <- function(data){
   
   data_long <- data_clean %>% 
     separate_longer_delim(c(protein_id, peptide_counts_razor_unique), delim = ";")
   
-  missing_entries <- data_clean[is.na(data_clean$gene_names) | is.na(data_clean$protein_names), 1:7]
-    
+  missing_entries <- data_long[is.na(data_long$gene_names) | is.na(data_long$protein_names), 1:7] 
+  
   complete_names <- missing_entries %>% 
-    separate_longer_delim(c(protein_id, peptide_counts_razor_unique), delim = ";") %>% 
     group_by(majority_protein_id) %>% 
     mutate(gene_names = case_when(
       is.na(gene_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"),
       .default = gene_names
-    )) %>% 
+    )) 
+  
+  complete_names2 <- complete_names %>% 
     filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
     ungroup() %>% 
-    mutate(gene_names = gsub("( |;).*", "", gene_names)) %>% 
+    mutate(gene_names = gsub("( |;).*", "", gene_names))
+  
+  complete_names3 <- complete_names2 %>% 
     mutate(protein_names = case_when(
       is.na(protein_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name"),
       .default = protein_names
     )) %>% 
     filter(protein_names != "deleted")
   
-  complete_names %>% 
+  complete_names3_1 <- complete_names3 %>% 
+    select(protein_id, protein_names, gene_names)
+  
+  data_long[is.na(data_long$protein_names), "protein_names"] <- complete_names3_1$protein_names[match(data_long$protein_id, complete_names3_1$protein_id)][which(is.na(data_long$protein_names))]
+  data_long[is.na(data_long$gene_names), "gene_names"] <- complete_names3_1$gene_names[match(data_long$protein_id, complete_names3_1$protein_id)][which(is.na(data_long$gene_names))]
+ 
+  data_long2 <- data_long[!is.na(data_long$protein_names) & !is.na(data_long$gene_names), ]
+  
+  complete_names4 <- complete_names3 %>% 
     group_by(majority_protein_id) %>% 
     summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
+    mutate(gene_names = str_remove())
     ungroup()
   
   # Merge annotations to data_long or transform intensities first to reduce dimensions
@@ -95,7 +117,6 @@ add_missing_names <- function(data){
   
   # Collapse protein ids to gene names
 }
-
 
 transform_intensities <- function(data){
   
