@@ -1,22 +1,24 @@
-#load necessary packages
+#load packages
 library(broom)
 library(fitdistrplus)
+library(gt)
 library(ggpubr)
 library(knitr)
 library(metRology)
 library(mgcv)
+library(renv)
 library(reshape2)
 library(scales)
 library(tidyverse)
 library(UniprotR)
 library(XICOR)
 
-# 1. Data import ----
+# Data import and trasnfromation----
 # Import HIC-MS/MS data set. This data table was created from the ProteinGroups table of the MaxQuant output.
 # After filtering for false positives (reverse) and contaminants, only proteins quantified in both experiments and/or replicates (IBR) were considered.
 # Relative intensities were calculated by dividing the intensity in each fraction by the summed intensity for the respective protein group and label.
 
-data <- readr::read_tsv("data-raw/proteinGroups.txt", 
+data_raw <- readr::read_tsv("data-raw/proteinGroups.txt", 
                        col_types = cols(
                          .default = col_guess(), 
                          'Reverse' = col_character(), 
@@ -54,69 +56,70 @@ clean_data <- function(data){
   data
 }
 
-data_clean <- clean_data(data)
+data_clean <- clean_data(data_raw)
 
-
-# add_names(), reduce to one gene name
-# remove majority protein id
-# export annotations table to global env
-# keep protein id for downstream analysis
-
-data_clean %>% 
+data_long <- data_clean %>% 
   pivot_longer(
     cols = tidyselect::matches("([l|m|h]_f.+)"),
     names_to = c("experiment", "fraction"),
     names_pattern = "intensity_(.)_f(.)",
     values_to = "intensity"
       ) %>% 
-  mutate(relative_intensity = in) %>% 
   view()
 
 add_missing_names <- function(data){
   
-  data_long <- data_clean %>% 
+  data_sep <- data %>% 
     separate_longer_delim(c(protein_id, peptide_counts_razor_unique), delim = ";")
   
-  missing_entries <- data_long[is.na(data_long$gene_names) | is.na(data_long$protein_names), 1:7] 
+  missing_entries <- data_sep[is.na('gene_names') | is.na('protein_names'), 1:7] 
   
   complete_names <- missing_entries %>% 
     group_by(majority_protein_id) %>% 
     mutate(gene_names = case_when(
       is.na(gene_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"),
       .default = gene_names
-    )) 
-  
-  complete_names2 <- complete_names %>% 
+    )) %>% 
     filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
     ungroup() %>% 
-    mutate(gene_names = gsub("( |;).*", "", gene_names))
-  
-  complete_names3 <- complete_names2 %>% 
+    mutate(gene_names = gsub("( |;).*", "", gene_names)) %>% 
     mutate(protein_names = case_when(
       is.na(protein_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name"),
       .default = protein_names
     )) %>% 
+    # Remove invalid UniprotKB entries
     filter(protein_names != "deleted")
   
-  complete_names3_1 <- complete_names3 %>% 
+  annotations <- complete_names %>% 
     select(protein_id, protein_names, gene_names)
   
-  data_long[is.na(data_long$protein_names), "protein_names"] <- complete_names3_1$protein_names[match(data_long$protein_id, complete_names3_1$protein_id)][which(is.na(data_long$protein_names))]
-  data_long[is.na(data_long$gene_names), "gene_names"] <- complete_names3_1$gene_names[match(data_long$protein_id, complete_names3_1$protein_id)][which(is.na(data_long$gene_names))]
- 
-  data_long2 <- data_long[!is.na(data_long$protein_names) & !is.na(data_long$gene_names), ]
+  # add missing annotations to complete data set
+  data_sep[is.na('protein_names'), 'protein_names'] <- annotations$protein_names[match(data_sep$protein_id, annotations$protein_id)][which(is.na(data_sep$protein_names))]
+  data_sep[is.na('gene_names'), 'gene_names'] <- annotations$gene_names[match(data_sep$protein_id, annotations$protein_id)][which(is.na(data_sep$gene_names))]
   
-  complete_names4 <- complete_names3 %>% 
+  # keep only protein IDs with the most razor and unique peptides
+  merged <- data_sep %>% 
+    filter(!if_any(c(protein_names, gene_names), is.na)) %>% 
     group_by(majority_protein_id) %>% 
+    filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
+    ungroup() %>% 
+    # Collapse protein ids to gene names
+    group_by(gene_names) %>% 
+    filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
     summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
-    mutate(gene_names = str_remove())
-    ungroup()
+    mutate(gene_names = str_remove(gene_names, "NA")) %>% 
+    ungroup() %>% 
+    select(!contains("peptide"))
   
-  # Merge annotations to data_long or transform intensities first to reduce dimensions
-  
-  
-  # Collapse protein ids to gene names
+  # Export annotations
+  annotations <<- merged %>% 
+    select(protein_id, majority_protein_id, gene_names)
+
+  merged
 }
+
+data_annotated <- add_missing_names(data_clean)
+
 
 transform_intensities <- function(data){
   
