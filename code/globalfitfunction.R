@@ -63,26 +63,24 @@ update_names <- function(data){
     separate_longer_delim(protein_id, delim = ";")
   
   missing_entries <- data_sep[is.na(data_sep$gene_names) | is.na(data_sep$protein_names), 1:3] 
+  unreviewed <- data_sep[startsWith(data_sep$protein_id, "A0") ,1:4]
   
   complete_names <- missing_entries %>% 
     mutate(gene_names = UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names")) %>% 
-    mutate(protein_names = UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name")) %>% 
-    # Remove invalid UniprotKB entries
-    filter(protein_names != "deleted")
+    mutate(protein_names = UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name"))
   
-  # add missing annotations to complete data set
-  data_sep[is.na(data_sep$protein_names), 'protein_names'] <- annotations$protein_names[match(data_sep$protein_id, annotations$protein_id)][which(is.na(data_sep$protein_names))]
-  data_sep[is.na(data_sep$gene_names), 'gene_names'] <- annotations$gene_names[match(data_sep$protein_id, annotations$protein_id)][which(is.na(data_sep$gene_names))]
+  unreviewed2 <- unreviewed %>% 
+    mutate(gene_names = UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"))
+    
+  
+  # Add annotations to complete data set
+  data_sep[is.na(data_sep$protein_names), 'protein_names'] <- complete_names$protein_names[match(data_sep$protein_id, complete_names$protein_id)][which(is.na(data_sep$protein_names))]
+  data_sep[is.na(data_sep$gene_names), 'gene_names'] <- complete_names$gene_names[match(data_sep$protein_id, complete_names$protein_id)][which(is.na(data_sep$gene_names))]
   
   # keep only protein IDs with the most razor and unique peptides
   merged <- data_sep %>% 
     filter(!if_any(c(protein_names, gene_names), is.na)) %>% 
-    group_by(majority_protein_id) %>% 
-    filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
-    ungroup() %>% 
-    # Collapse protein ids to gene names
     group_by(gene_names) %>% 
-    filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
     summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
     mutate(gene_names = str_remove(gene_names, "NA")) %>% 
     mutate(across(starts_with('intensity'), ~str_remove(., "(;.+)"))) %>% 
