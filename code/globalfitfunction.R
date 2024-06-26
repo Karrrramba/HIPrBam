@@ -13,7 +13,7 @@ library(tidyverse)
 library(UniprotR)
 library(XICOR)
 
-# Data import and trasnfromation----
+# Data import and transfromation----
 # Import HIC-MS/MS data set. This data table was created from the ProteinGroups table of the MaxQuant output.
 # After filtering for false positives (reverse) and contaminants, only proteins quantified in both experiments and/or replicates (IBR) were considered.
 # Relative intensities were calculated by dividing the intensity in each fraction by the summed intensity for the respective protein group and label.
@@ -58,21 +58,13 @@ clean_data <- function(data){
 
 data_clean <- clean_data(data_raw)
 
-data_long <- data_clean %>% 
-  pivot_longer(
-    cols = tidyselect::matches("([l|m|h]_f.+)"),
-    names_to = c("experiment", "fraction"),
-    names_pattern = "intensity_(.)_f(.)",
-    values_to = "intensity"
-      ) %>% 
-  view()
 
 add_missing_names <- function(data){
   
   data_sep <- data %>% 
     separate_longer_delim(c(protein_id, peptide_counts_razor_unique), delim = ";")
   
-  missing_entries <- data_sep[is.na('gene_names') | is.na('protein_names'), 1:7] 
+  missing_entries <- data_sep[is.na(data_sep$gene_names) | is.na(data_sep$protein_names), 1:7] 
   
   complete_names <- missing_entries %>% 
     group_by(majority_protein_id) %>% 
@@ -94,8 +86,8 @@ add_missing_names <- function(data){
     select(protein_id, protein_names, gene_names)
   
   # add missing annotations to complete data set
-  data_sep[is.na('protein_names'), 'protein_names'] <- annotations$protein_names[match(data_sep$protein_id, annotations$protein_id)][which(is.na(data_sep$protein_names))]
-  data_sep[is.na('gene_names'), 'gene_names'] <- annotations$gene_names[match(data_sep$protein_id, annotations$protein_id)][which(is.na(data_sep$gene_names))]
+  data_sep[is.na(data_sep$protein_names), 'protein_names'] <- annotations$protein_names[match(data_sep$protein_id, annotations$protein_id)][which(is.na(data_sep$protein_names))]
+  data_sep[is.na(data_sep$gene_names), 'gene_names'] <- annotations$gene_names[match(data_sep$protein_id, annotations$protein_id)][which(is.na(data_sep$gene_names))]
   
   # keep only protein IDs with the most razor and unique peptides
   merged <- data_sep %>% 
@@ -112,7 +104,7 @@ add_missing_names <- function(data){
     select(!contains("peptide"))
   
   # Export annotations
-  annotations <<- merged %>% 
+  protein_annotations <<- merged %>% 
     select(protein_id, majority_protein_id, gene_names)
 
   merged
@@ -122,6 +114,15 @@ data_annotated <- add_missing_names(data_clean)
 
 
 transform_intensities <- function(data){
+  
+  data_long <- data_clean %>% 
+    pivot_longer(
+      cols = tidyselect::matches("([l|m|h]_f.+)"),
+      names_to = c("experiment", "fraction"),
+      names_pattern = "intensity_(.)_f(.)",
+      values_to = "intensity"
+    ) %>% 
+    view()
   
   long <- data %>% 
     tidyr::pivot_longer(
