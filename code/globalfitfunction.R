@@ -28,9 +28,7 @@ data_raw <- readr::read_tsv("data-raw/proteinGroups.txt",
                          'Protein IDs', 
                          'Majority protein IDs', 
                          'Protein names', 
-                         'Gene names', 
-                         'Peptides',
-                         tidyselect::matches('(\\((.+)?unique\\))'),
+                         'Gene names',
                          'Reverse',
                          'Contaminant',
                          tidyselect::matches("(^Intensity\\s(M|H|L))")
@@ -59,31 +57,18 @@ clean_data <- function(data){
 data_clean <- clean_data(data_raw)
 
 
-add_missing_names <- function(data){
+update_names <- function(data){
   
-  data_sep <- data %>% 
-    separate_longer_delim(c(protein_id, peptide_counts_razor_unique), delim = ";")
+  data_sep <- data_clean %>% 
+    separate_longer_delim(protein_id, delim = ";")
   
-  missing_entries <- data_sep[is.na(data_sep$gene_names) | is.na(data_sep$protein_names), 1:7] 
+  missing_entries <- data_sep[is.na(data_sep$gene_names) | is.na(data_sep$protein_names), 1:3] 
   
   complete_names <- missing_entries %>% 
-    group_by(majority_protein_id) %>% 
-    mutate(gene_names = case_when(
-      is.na(gene_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"),
-      .default = gene_names
-    )) %>% 
-    filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
-    ungroup() %>% 
-    mutate(gene_names = gsub("( |;).*", "", gene_names)) %>% 
-    mutate(protein_names = case_when(
-      is.na(protein_names) ~ UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name"),
-      .default = protein_names
-    )) %>% 
+    mutate(gene_names = UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names")) %>% 
+    mutate(protein_names = UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name")) %>% 
     # Remove invalid UniprotKB entries
     filter(protein_names != "deleted")
-  
-  annotations <- complete_names %>% 
-    select(protein_id, protein_names, gene_names)
   
   # add missing annotations to complete data set
   data_sep[is.na(data_sep$protein_names), 'protein_names'] <- annotations$protein_names[match(data_sep$protein_id, annotations$protein_id)][which(is.na(data_sep$protein_names))]
@@ -100,8 +85,9 @@ add_missing_names <- function(data){
     filter(peptide_counts_razor_unique == max(peptide_counts_razor_unique)) %>% 
     summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
     mutate(gene_names = str_remove(gene_names, "NA")) %>% 
+    mutate(across(starts_with('intensity'), ~str_remove(., "(;.+)"))) %>% 
     ungroup() %>% 
-    select(!contains("peptide"))
+    select(!c(contains("peptide")))
   
   # Export annotations
   protein_annotations <<- merged %>% 
@@ -112,10 +98,9 @@ add_missing_names <- function(data){
 
 data_annotated <- add_missing_names(data_clean)
 
-
 transform_intensities <- function(data){
   
-  data_long <- data_clean %>% 
+  long <- annotated %>% 
     pivot_longer(
       cols = tidyselect::matches("([l|m|h]_f.+)"),
       names_to = c("experiment", "fraction"),
