@@ -111,50 +111,23 @@ transform_intensities <- function(data){
     filter(total_label == experiment) %>% 
     ungroup() %>% 
     select(!total_label) %>% 
-    mutate(across(c(intensity, total_intensity, fraction), as.numeric))
-  
-  rel <- long %>% 
-    mutate(relative_intensity = round(intensity / `total_intensity` * 100, 1)) %>% 
-    select(!c(intensity, total_intensity))
-  
-  labeled <- rel %>% mutate(experiment = case_when(
+    mutate(experiment = case_when(
     experiment == "l" ~ "ctrl",
     experiment == "m" ~ "ibr1",
     experiment == "h" ~ "ibr2"
     )) %>% 
-    mutate(across(c(experiment, gene_names), as.factor))
-
+    mutate(across(c(experiment, gene_names), as.factor)) %>% 
+    mutate(across(c(intensity, total_intensity, fraction), as.numeric)) 
   
-  ordered <- labeled %>% 
+  rel <- long %>% 
+    mutate(relative_intensity = round(intensity / `total_intensity` * 100, 1)) %>% 
+    select(!c(intensity, total_intensity)) %>% 
     group_by(gene_names, experiment) %>% 
-    arrange(fraction, experiment)
+    arrange(gene_names, experiment, fraction) %>% 
+    ungroup()
 }
 
-# clean up our data table and transform it into long format.
-data <- data %>%
-  rename(
-    "UniprotID" = "Majority.protein.IDs",
-    "GeneName" = "Gene.names",
-    "ProteinName" = "Protein.names",
-    "Ctrl1_" = matches("rel.Int.L"),
-    "IBR1_" = matches("rel.Int.M"),
-    "IBR2_" = matches("rel.Int.H")
-  ) %>%
-  dplyr::select(!c(Protein.IDs, Peptides, matches("Intensity"))) %>%
-  dplyr::mutate(across(where(is_integer)), as.numeric) %>%
-  pivot_longer(cols = 1:105, names_to = "Fraction", values_to = "RelInt") %>%
-  mutate(
-    Experiment = str_extract(Fraction, "^([^_]*)-*"),
-    Replicate = as.factor(str_extract(Experiment, ".$")),
-    Experiment = as.factor(str_replace(Experiment, ".$", "")),
-    Fraction = str_extract(Fraction, "[^_]+$"),
-    RelInt = RelInt / 100
-  ) %>%
-  relocate(Experiment, .after = GeneName) %>%
-  relocate(Replicate, .after = Experiment)
 
-# Inspect the new data format.
-data %>% head()
 
 # Our data table now has the following columns:
 #   - UniprotID = Unique Uniprot identifier.
