@@ -57,21 +57,16 @@ clean_data <- function(data){
 data_clean <- clean_data(data_raw)
 
 
-update_names <- function(data){
+add_missing_names <- function(data){
   
-  data_sep <- data_clean %>% 
+  data_sep <- data %>% 
     separate_longer_delim(protein_id, delim = ";")
   
   missing_entries <- data_sep[is.na(data_sep$gene_names) | is.na(data_sep$protein_names), 1:3] 
-  unreviewed <- data_sep[startsWith(data_sep$protein_id, "A0") ,1:4]
-  
+
   complete_names <- missing_entries %>% 
     mutate(gene_names = UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names")) %>% 
     mutate(protein_names = UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name"))
-  
-  unreviewed2 <- unreviewed %>% 
-    mutate(gene_names = UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"))
-    
   
   # Add annotations to complete data set
   data_sep[is.na(data_sep$protein_names), 'protein_names'] <- complete_names$protein_names[match(data_sep$protein_id, complete_names$protein_id)][which(is.na(data_sep$protein_names))]
@@ -84,13 +79,14 @@ update_names <- function(data){
     summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
     mutate(gene_names = str_remove(gene_names, "NA")) %>% 
     mutate(across(starts_with('intensity'), ~str_remove(., "(;.+)"))) %>% 
-    ungroup() %>% 
-    select(!c(contains("peptide")))
+    ungroup()
   
   # Export annotations
   protein_annotations <<- merged %>% 
     select(protein_id, majority_protein_id, gene_names)
 
+  merged <- select(merged, !contains("protein"))
+  
   merged
 }
 
@@ -98,32 +94,40 @@ data_annotated <- add_missing_names(data_clean)
 
 transform_intensities <- function(data){
   
-  long <- annotated %>% 
+  long <- data_annotated %>% 
     pivot_longer(
       cols = tidyselect::matches("([l|m|h]_f.+)"),
       names_to = c("experiment", "fraction"),
-      names_pattern = "intensity_(.)_f(.)",
+      names_pattern = "intensity_(.)_f(.+)$",
       values_to = "intensity"
     ) %>% 
-    view()
-  
-  long <- data %>% 
-    tidyr::pivot_longer(
-      cols = matches('_f.+'),
-      names_to = c('experiment', 'fraction'),
-      names_pattern =  "intensity_(.)_f(.*)",
-      values_to = 'intensity',
-      values_transform = list(fraction = is.numeric)
-    ) 
+    pivot_longer(
+      cols = tidyselect::matches("[l|m|h]$"),
+      names_to = "total_label",
+      names_pattern = "intensity_(.)",
+      values_to = "total_intensity"
+    ) %>% 
+    group_by(gene_names, experiment, fraction) %>% 
+    filter(total_label == experiment) %>% 
+    ungroup() %>% 
+    select(!total_label) %>% 
+    mutate(across(c(intensity, total_intensity, fraction), as.numeric))
   
   rel <- long %>% 
-    mutate(rel_intensity = case_when(
-      experiment == 'l' ~ round(intensity / intensity_l * 100, 1),
-      experiment == 'm' ~ round(intensity / intensity_m * 100, 1),
-      TRUE ~ round(intensity / intensity_h * 100, 1)
-    )) %>% 
-    select(starts_with('intensity'))
+    mutate(relative_intensity = round(intensity / `total_intensity` * 100, 1)) %>% 
+    select(!c(intensity, total_intensity))
   
+  labeled <- rel %>% mutate(experiment = case_when(
+    experiment == "l" ~ "ctrl",
+    experiment == "m" ~ "ibr1",
+    experiment == "h" ~ "ibr2"
+    )) %>% 
+    mutate(across(c(experiment, gene_names), as.factor))
+
+  
+  ordered <- labeled %>% 
+    group_by(gene_names, experiment) %>% 
+    arrange(fraction, experiment)
 }
 
 # clean up our data table and transform it into long format.
