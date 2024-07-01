@@ -43,6 +43,9 @@ fasta <- readLines(fasta_file)
 header_indx <- grep(">", proteome)
 seq_meta <- gsub(">sp\\|", "", proteome2[header_indx])
 # Extract protein ID, protein name and gene name 
+protein_ids <- str_extract(seq_meta, "^(\\w+)")
+protein_names <- gsub("(HUMAN )|( OS)","",str_extract(seq_meta, "HUMAN(.+) OS"))
+gene_names <- gsub("GN=", "",str_extract(seq_meta, "GN=(\\w+)"))
 # Identify AA sequence start and end indexes
 seq_start_indx <- header_indx + 1
 seq_end_indx <- c(header_indx, length(proteome) + 1)[-1] - 1
