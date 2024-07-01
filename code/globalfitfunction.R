@@ -39,21 +39,36 @@ fasta_path <- "data-raw/UP000005640_9606.fasta"
 
 parse_fasta_file <- function(file){
   
-fasta <- readLines(fasta_file)
-header_indx <- grep(">", proteome)
-seq_meta <- gsub(">sp\\|", "", proteome2[header_indx])
-# Extract protein ID, protein name and gene name 
-protein_ids <- str_extract(seq_meta, "^(\\w+)")
-protein_names <- gsub("(HUMAN )|( OS)","",str_extract(seq_meta, "HUMAN(.+) OS"))
-gene_names <- gsub("GN=", "",str_extract(seq_meta, "GN=(\\w+)"))
-# Identify AA sequence start and end indexes
-seq_start_indx <- header_indx + 1
-seq_end_indx <- c(header_indx, length(proteome) + 1)[-1] - 1
-# 
-aa_seq <- rep(NA, length(header_indx))
+  fasta <- readLines(file)
+  seq_meta_indx <- grep(">", fasta)
+  seq_meta <- gsub(">sp\\|", "", fasta[seq_meta_indx])
+  
+  # Retrieve protein ID, protein name and gene name 
+  protein_ids <- str_extract(seq_meta, "^(\\w+)")
+  protein_names <- gsub("(HUMAN )|( OS)","", str_extract(seq_meta, "HUMAN(.+) OS"))
+  gene_names <- gsub("GN=", "",str_extract(seq_meta, "GN=(\\w+)"))
+  
+  # Identify AA sequence start and end indexes
+  aa_seq_start_indx <- header_indx + 1
+  aa_seq_end_indx <- c(header_indx, length(proteome) + 1)[-1] - 1
+  
+  # Extract AA sequence
+  aa_seq <- rep(NA, length(seq_meta_indx))
+  for (i in 1:length(seq_meta_indx)) {
+    seq_start <- aa_seq_start_indx[i]
+    seq_end <- aa_seq_end_indx[i]
+    aa_seq[i] <- paste(fasta[seq_start:seq_end],
+                       collapse = "")
+  }
+  
+  set <- data.frame(protein_ids, protein_names, gene_names, aa_seq)
+  full_set <- proteome_info[!is.na(proteome_info$gene_names), ]
+  
+  full_set
+  
 }
 
-
+proteome_data <- parse_fasta_file(fasta_path)
 
 clean_data <- function(data){
   # Make clean column names
