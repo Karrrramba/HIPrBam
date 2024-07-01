@@ -35,6 +35,22 @@ data_raw <- readr::read_tsv("data-raw/proteinGroups.txt",
                          )
                 )
 
+fasta_path <- "data-raw/UP000005640_9606.fasta"
+
+parse_fasta_file <- function(file){
+  
+fasta <- readLines(fasta_file)
+header_indx <- grep(">", proteome)
+seq_meta <- gsub(">sp\\|", "", proteome2[header_indx])
+# Extract protein ID, protein name and gene name 
+# Identify AA sequence start and end indexes
+seq_start_indx <- header_indx + 1
+seq_end_indx <- c(header_indx, length(proteome) + 1)[-1] - 1
+# 
+aa_seq <- rep(NA, length(header_indx))
+}
+
+
 
 clean_data <- function(data){
   # Make clean column names
@@ -55,7 +71,7 @@ clean_data <- function(data){
 }
 
 data_clean <- clean_data(data_raw)
-
+data <- clean_data(data_raw)
 
 add_missing_names <- function(data){
   
@@ -91,6 +107,15 @@ add_missing_names <- function(data){
 }
 
 data_annotated <- add_missing_names(data_clean)
+
+wtf <- protein_annotations %>% 
+  arrange(gene_names) %>% 
+  slice(1:9) %>% 
+  separate_longer_delim(protein_id, delim = ";")
+
+wtf2 <- wtf %>% 
+  mutate(gene_names = UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"))
+  
 
 transform_intensities <- function(data){
   
