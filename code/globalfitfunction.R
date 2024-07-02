@@ -40,29 +40,29 @@ fasta_path <- "data-raw/UP000005640_9606.fasta"
 parse_fasta_file <- function(file){
   
   fasta <- readLines(file)
-  seq_meta_indx <- grep(">", fasta)
-  seq_meta <- gsub(">sp\\|", "", fasta[seq_meta_indx])
+  meta_indx <- grep(">", fasta)
+  meta <- gsub(">sp\\|", "", fasta[seq_meta_indx])
   
   # Retrieve protein ID, protein name and gene name 
-  protein_ids <- str_extract(seq_meta, "^(\\w+)")
-  protein_names <- gsub("(HUMAN )|( OS)","", str_extract(seq_meta, "HUMAN(.+) OS"))
-  gene_names <- gsub("GN=", "",str_extract(seq_meta, "GN=(\\w+)"))
+  protein_id <- str_extract(meta, "^(\\w+)")
+  protein_name <- gsub("(HUMAN )|( OS)","", str_extract(meta, "HUMAN(.+) OS"))
+  gene_name <- gsub("GN=", "",str_extract(meta, "GN=(\\w+)"))
   
   # Identify AA sequence start and end indexes
-  aa_seq_start_indx <- header_indx + 1
-  aa_seq_end_indx <- c(header_indx, length(proteome) + 1)[-1] - 1
+  aa_seq_start_indx <- meta_indx + 1
+  aa_seq_end_indx <- c(meta_indx, length(fasta) + 1)[-1] - 1
   
   # Extract AA sequence
-  aa_seq <- rep(NA, length(seq_meta_indx))
-  for (i in 1:length(seq_meta_indx)) {
+  aa_seq <- rep(NA, length(meta_indx))
+  for (i in 1:length(meta_indx)) {
     seq_start <- aa_seq_start_indx[i]
     seq_end <- aa_seq_end_indx[i]
     aa_seq[i] <- paste(fasta[seq_start:seq_end],
                        collapse = "")
   }
   
-  set <- data.frame(protein_ids, protein_names, gene_names, aa_seq)
-  full_set <- proteome_info[!is.na(proteome_info$gene_names), ]
+  set <- data.frame(protein_id, protein_name, gene_name, aa_seq)
+  full_set <- set[!is.na(set$gene_name) & !is.na(set$protein_id), ]
   
   full_set
   
@@ -84,60 +84,33 @@ clean_data <- function(data){
   data <- data %>% 
     filter(!if_any(c(intensity_l, intensity_m, intensity_h), ~.x == 0))
     
-  # Add gene_names an
   data
 }
 
 data_clean <- clean_data(data_raw)
-data <- clean_data(data_raw)
 
-add_missing_names <- function(data){
+update_names <- function(data) {
   
-  data_sep <- data %>% 
-    separate_longer_delim(protein_id, delim = ";")
+  data <- data %>% 
+  separate_longer_delim(protein_id, delim = ";") %>% 
+  select(!c(protein_names, gene_names)) %>% 
+  left_join(., proteome_data %>% select(!aa_seq), by = join_by("protein_id")) %>% 
+  relocate(c(protein_name, gene_name), .after = majority_protein_id) %>% 
+  filter(!if_any(c(protein_name, protein_id), ~is.na(.x))) %>% 
+  group_by(gene_name) %>% 
+  summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
+  mutate(across(starts_with('intensity'), ~str_remove(., "(;.+)"))) %>% 
+  ungroup()
   
-  missing_entries <- data_sep[is.na(data_sep$gene_names) | is.na(data_sep$protein_names), 1:3] 
+  data
+  
+} 
 
-  complete_names <- missing_entries %>% 
-    mutate(gene_names = UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names")) %>% 
-    mutate(protein_names = UniprotR::GetProteinAnnontate(protein_id, columns = "protein_name"))
-  
-  # Add annotations to complete data set
-  data_sep[is.na(data_sep$protein_names), 'protein_names'] <- complete_names$protein_names[match(data_sep$protein_id, complete_names$protein_id)][which(is.na(data_sep$protein_names))]
-  data_sep[is.na(data_sep$gene_names), 'gene_names'] <- complete_names$gene_names[match(data_sep$protein_id, complete_names$protein_id)][which(is.na(data_sep$gene_names))]
-  
-  # keep only protein IDs with the most razor and unique peptides
-  merged <- data_sep %>% 
-    filter(!if_any(c(protein_names, gene_names), is.na)) %>% 
-    group_by(gene_names) %>% 
-    summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
-    mutate(gene_names = str_remove(gene_names, "NA")) %>% 
-    mutate(across(starts_with('intensity'), ~str_remove(., "(;.+)"))) %>% 
-    ungroup()
-  
-  # Export annotations
-  protein_annotations <<- merged %>% 
-    select(protein_id, majority_protein_id, gene_names)
-
-  merged <- select(merged, !contains("protein"))
-  
-  merged
-}
-
-data_annotated <- add_missing_names(data_clean)
-
-wtf <- protein_annotations %>% 
-  arrange(gene_names) %>% 
-  slice(1:9) %>% 
-  separate_longer_delim(protein_id, delim = ";")
-
-wtf2 <- wtf %>% 
-  mutate(gene_names = UniprotR::GetProteinAnnontate(protein_id, columns = "gene_names"))
-  
+data_updated <- update_names(data_clean)
 
 transform_intensities <- function(data){
   
-  long <- data_annotated %>% 
+  long <- data %>% 
     pivot_longer(
       cols = tidyselect::matches("([l|m|h]_f.+)"),
       names_to = c("experiment", "fraction"),
@@ -150,7 +123,7 @@ transform_intensities <- function(data){
       names_pattern = "intensity_(.)",
       values_to = "total_intensity"
     ) %>% 
-    group_by(gene_names, experiment, fraction) %>% 
+    group_by(gene_name, experiment, fraction) %>% 
     filter(total_label == experiment) %>% 
     ungroup() %>% 
     select(!total_label) %>% 
@@ -159,18 +132,18 @@ transform_intensities <- function(data){
     experiment == "m" ~ "ibr1",
     experiment == "h" ~ "ibr2"
     )) %>% 
-    mutate(across(c(experiment, gene_names), as.factor)) %>% 
+    mutate(across(c(experiment, gene_name), as.factor)) %>% 
     mutate(across(c(intensity, total_intensity, fraction), as.numeric)) 
   
   rel <- long %>% 
     mutate(relative_intensity = round(intensity / `total_intensity` * 100, 1)) %>% 
     select(!c(intensity, total_intensity)) %>% 
-    group_by(gene_names, experiment) %>% 
-    arrange(gene_names, experiment, fraction) %>% 
+    group_by(gene_name, experiment) %>% 
+    arrange(gene_name, experiment, fraction) %>% 
     ungroup()
 }
 
-
+data_rel_int <- transform_intensities(data_updated)
 
 # Our data table now has the following columns:
 #   - UniprotID = Unique Uniprot identifier.
