@@ -143,11 +143,23 @@ transform_intensities <- function(data){
     ungroup()
 }
 
-data_rel_int <- transform_intensities(data_updated)
+data_rel <- transform_intensities(data_updated)
+
+# Filter out proteins based on xi correlation coefficient between replicates
+
+data_rel %>% 
+  filter(experiment != "ctrl") %>% 
+  group_by(gene_name, experiment)
+  mutate(corr = ) %>% 
+  group_by(gene_name) %>% 
+  summarise(corr = mean(corr)) %>% 
+  filter(corr >= 0.8) %>% 
+  ungroup()
+
 
 # Our data table now has the following columns:
-#   - UniprotID = Unique Uniprot identifier.
-#   - ProteinName = Official full-length name.
+#   - protein_id = Unique Uniprot identifier.
+#   - protein_name = Official full-length name.
 #   - GeneName = Official gene name.
 #   - Experiment = Categorical column with two values: "Ctrl" and "IBR".
 #     Corresponding to SILAC label; Ctrl = light, IBR = medium/heavy
