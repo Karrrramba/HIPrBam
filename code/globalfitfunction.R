@@ -10,30 +10,12 @@ library(renv)
 library(reshape2)
 library(scales)
 library(tidyverse)
-library(UniprotR)
-library(XICOR)
 
 # Data import and transfromation----
 # Import HIC-MS/MS data set. This data table was created from the ProteinGroups table of the MaxQuant output.
 # After filtering for false positives (reverse) and contaminants, only proteins quantified in both experiments and/or replicates (IBR) were considered.
 # Relative intensities were calculated by dividing the intensity in each fraction by the summed intensity for the respective protein group and label.
 
-data_raw <- readr::read_tsv("data-raw/proteinGroups.txt", 
-                       col_types = cols(
-                         .default = col_guess(), 
-                         'Reverse' = col_character(), 
-                         'Contaminant' = col_character()
-                         ), 
-                       col_select = c(
-                         'Protein IDs', 
-                         'Majority protein IDs', 
-                         'Protein names', 
-                         'Gene names',
-                         'Reverse',
-                         'Contaminant',
-                         tidyselect::matches("(^Intensity\\s(M|H|L))")
-                         )
-                )
 
 fasta_path <- "data-raw/UP000005640_9606.fasta"
 
@@ -41,7 +23,7 @@ parse_fasta_file <- function(file){
   
   fasta <- readLines(file)
   meta_indx <- grep(">", fasta)
-  meta <- gsub(">sp\\|", "", fasta[seq_meta_indx])
+  meta <- gsub(">sp\\|", "", fasta[meta_indx])
   
   # Retrieve protein ID, protein name and gene name 
   protein_id <- str_extract(meta, "^(\\w+)")
@@ -68,6 +50,23 @@ parse_fasta_file <- function(file){
   
 }
 
+data_raw <- readr::read_tsv("data-raw/proteinGroups.txt", 
+                       col_types = cols(
+                         .default = col_guess(), 
+                         'Reverse' = col_character(), 
+                         'Contaminant' = col_character()
+                         ), 
+                       col_select = c(
+                         'Protein IDs', 
+                         'Majority protein IDs', 
+                         'Protein names', 
+                         'Gene names',
+                         'Reverse',
+                         'Contaminant',
+                         tidyselect::matches("(^Intensity\\s(M|H|L))")
+                         )
+                )
+
 proteome_data <- parse_fasta_file(fasta_path)
 
 clean_data <- function(data){
@@ -92,21 +91,24 @@ data_clean <- clean_data(data_raw)
 update_names <- function(data) {
   
   data <- data %>% 
-  separate_longer_delim(protein_id, delim = ";") %>% 
-  select(!c(protein_names, gene_names)) %>% 
-  left_join(., proteome_data %>% select(!aa_seq), by = join_by("protein_id")) %>% 
-  relocate(c(protein_name, gene_name), .after = majority_protein_id) %>% 
-  filter(!if_any(c(protein_name, protein_id), ~is.na(.x))) %>% 
-  group_by(gene_name) %>% 
-  summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
-  mutate(across(starts_with('intensity'), ~str_remove(., "(;.+)"))) %>% 
-  ungroup()
+    separate_longer_delim(protein_id, delim = ";") %>% 
+    select(!c(protein_names, gene_names)) %>% 
+    left_join(., proteome_data %>% select(!aa_seq), by = join_by("protein_id")) %>% 
+    relocate(c(protein_name, gene_name), .after = majority_protein_id) %>% 
+    filter(!if_any(c(protein_name, protein_id), ~is.na(.x))) %>% 
+    group_by(gene_name) %>% 
+    summarise_all(list(~trimws(paste(., collapse = ';')))) %>% 
+    mutate(across(starts_with('intensity'), ~str_remove(., "(;.+)"))) %>% 
+    ungroup() %>% 
+    select(!dplyr::contains("protein"))
   
   data
   
 } 
 
 data_updated <- update_names(data_clean)
+
+data_updated <- data_updated %>% select(!dplyr::contains("protein"))
 
 transform_intensities <- function(data){
   
@@ -147,17 +149,20 @@ data_rel <- transform_intensities(data_updated)
 
 # Filter out proteins based on xi correlation coefficient between replicates
 
-data_rel %>% 
+correlations <- data_rel %>% 
   filter(experiment != "ctrl") %>% 
-  group_by(gene_name, experiment)
-  mutate(corr = ) %>% 
+  pivot_wider(id_cols = c(gene_name, fraction),
+              names_from = experiment,
+              values_from = relative_intensity) %>% 
   group_by(gene_name) %>% 
-  summarise(corr = mean(corr)) %>% 
-  filter(corr >= 0.8) %>% 
-  ungroup()
+  mutate(pearson = cor(ibr1, ibr2, method = "pearson")) %>% 
+  summarize(pearson = mean(pearson))
 
+correlations %>% 
+  filter(pearson >= 0.8) %>% 
+  nrow()
 
-# Our data table now has the following columns:
+# The data table now has the following columns:
 #   - protein_id = Unique Uniprot identifier.
 #   - protein_name = Official full-length name.
 #   - GeneName = Official gene name.
