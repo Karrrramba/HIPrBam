@@ -1,8 +1,10 @@
 #load packages
 library(broom)
-library(fitdistrplus)
-library(gt)
+# library(fitdistrplus)
+library(ggExtra)
 library(ggpubr)
+library(ggthemes)
+library(gt)
 library(knitr)
 library(metRology)
 library(mgcv)
@@ -11,7 +13,7 @@ library(reshape2)
 library(scales)
 library(tidyverse)
 
-# Data import and transfromation----
+# Data import and transformation----
 # Import HIC-MS/MS data set. This data table was created from the ProteinGroups table of the MaxQuant output.
 # After filtering for false positives (reverse) and contaminants, only proteins quantified in both experiments and/or replicates (IBR) were considered.
 # Relative intensities were calculated by dividing the intensity in each fraction by the summed intensity for the respective protein group and label.
@@ -143,12 +145,15 @@ transform_intensities <- function(data){
     group_by(gene_name, experiment) %>% 
     arrange(gene_name, experiment, fraction) %>% 
     ungroup()
+  
+  rel
+    
 }
 
 data_rel <- transform_intensities(data_updated)
 
-# Filter out proteins based on xi correlation coefficient between replicates
-
+# Filter out proteins based  with an inter-replicate Pearson correlation above 0.9
+# and average replicates
 correlations <- data_rel %>% 
   filter(experiment != "ctrl") %>% 
   pivot_wider(id_cols = c(gene_name, fraction),
@@ -157,10 +162,30 @@ correlations <- data_rel %>%
   group_by(gene_name) %>% 
   mutate(pearson = cor(ibr1, ibr2, method = "pearson")) %>% 
   summarize(pearson = mean(pearson)) %>% 
-  ungroup()
+  ungroup() %>% 
+  mutate(gene_name = as.character(gene_name))
 
-data_filtered <- data_rel %>% 
-  filter(gene_name %in% correlations[correlations$pearson >= 0.8, 'gene_name'])
+# hist(correlations$pearson)
+# boxplot(correlations$pearson)
+
+correlated <- flatten(correlations[correlations$pearson >= 0.8, 'gene_name'])
+
+data_averaged <- data_rel %>% 
+  filter(as.character(gene_name) %in% correlated) %>% 
+  pivot_wider(id_cols = c(gene_name, fraction),
+                names_from = experiment,
+                values_from = relative_intensity) %>% 
+  rowwise() %>% 
+  mutate(ibr = round(mean(c(ibr1, ibr2)), 1)) %>% 
+  ungroup() %>% 
+  pivot_longer(cols = c(ctrl, ibr),
+               names_to = "treatment",
+               values_to = "relative_intensity") %>% 
+  select(!c(ibr1, ibr2)) %>% 
+  relocate(treatment, .after = gene_name) %>% 
+  group_by(gene_name, treatment) %>% 
+  arrange(gene_name, treatment, fraction) %>% 
+  ungroup()
 
 # The data table now has the following columns:
 #   - protein_id = Unique Uniprot identifier.
@@ -176,115 +201,6 @@ data_filtered <- data_rel %>%
 #   - RelInt= Numerical values of relative MS intensity in the corresponding fraction.
 
 
-# 2. Data simulation ----
-# The experimental data contains two IBR replicates but only one Ctrl replicate.
-# We want to increase the robustness of our approach by creating a simulated a second Ctrl replicate
-# with similar characteristics.
-# Therefor we will first identify the underlying distribution of the deviations in relative intensities
-# between IBR replicates. In a second step we will create a similar distribution to sample from.
-# 2.1
-# We will further consider only those proteins with reproducible HIC profiles.
-# To do this we determine the inter-replicate correlation per protein.
-
-hist(test_dataset$Difference, freq = FALSE, breaks = 25)
-descdist(test_dataset$Difference, discrete = FALSE)
-
-
-# We can plot a histogram of the correlations (this plot corresponds to figure XXX):
-ggplot(test_dataset) +
-  geom_histogram(aes(x = PearsonR, y = after_stat(density)), bins = 30,
-                 fill = "darkcyan", alpha = 0.5, boundary = 0)+
-  scale_x_continuous(breaks = seq(0, 1, by = 0.2))+
-  theme_bw()
-
-# The histogram shows that for the vast majority of proteins there is a high correlation
-# (Pearson's r>0.9) between replicates. We will keep those proteins for which Pearson's r>= 0.8.
-# We can quickly compare the number of unique Uniprot IDs before and after filtering:
-tibble('before' = data %>%
-         distinct(UniprotID) %>%
-         dplyr::select(UniprotID) %>%
-         nrow(),
-       'after'  = correlated_prot %>%
-         distinct(UniprotID) %>%
-         dplyr::select(UniprotID) %>%
-         nrow())
-
-
-# We can plot the distribution of the differences:
-ggplot(test_dataset, aes(x=Difference)) +
-  geom_histogram(aes(y = after_stat(density)), bins = 100,
-                 fill = "darkgrey", alpha = 0.7, boundary = 0)+
-  geom_density(aes(y = after_stat(density)),
-            color = "black", linewidth = 1) +
-  scale_x_continuous(breaks = seq(-20, 20, by = 5))+
-  theme_bw()
-
-# We can look at the summary statistics of the distribution of differences:
-descdist(repDiffIBR$Difference, discrete = FALSE)
-dist_params <- descdist(test_dataset$Difference, discrete = FALSE)
-# For our simulated Ctrl replicate we create a t-distribution with similar parameters:
-SimDist <- rt(n = 80325, df= 3.2)
-library(sn)
-set.seed(12)
-sim_t_dist <-  rst(80325, xi=dist_params$median,
-                   omega = dist_params$sd,
-                   alpha = dist_params$skewness,
-                   nu = 3)
-summary(sim_t_dist)
-
-
-# For a visual comparison we plot both distributions:
-ggplot(test_dataset) +
-  geom_histogram(aes(x = Difference, y = after_stat(density), color = "IBR histogram"),
-                 bins = 100, alpha = 0.5, boundary = 0)+
-  geom_density(aes(x = Difference, y = after_stat(density), color = "IBR density"),
-               linewidth = 1, alpha = 0.7) +
-  geom_line(aes(x = Difference, y = dt(Difference, df = 3.2),
-                color = "sim density"),
-            linewidth = 1, alpha = 0.7) +
-  geom_histogram(aes(x = SimDist, y = after_stat(density), color = "sim histogram"), bins = 100,
-                alpha = 0.5, boundary = 0)+
-  theme_bw()+
-  scale_color_manual("", values = c("IBR histogram" = "darkgrey",
-                                    "sim histogram" = "red",
-                                    "IBR density" = "black",
-                                    "sim density" = "darkred"))
-
-# We can now simulate a second Ctrl replicate for each protein ID by
-# multiplying the relative intensities from the Ctrl with a factor sampled from the
-# created distribution. For simplicity's sake and to avoid creating new peaks
-# we add "noise" to non-zero values. If the simulation results in negative intensity values
-# the absolute value is returned instead.
-completeData <- data%>%
-  group_by(UniprotID) %>%
-  mutate(rep2 = if_else(RelInt > 0,
-                        RelInt+sample(SimDist,  size = 35, replace = TRUE)/100,
-                        0)) %>%
-  melt(., id = c("UniprotID", "ProteinName", "GeneName",
-                 "Experiment","Replicate", "Fraction")) %>%
-  filter(Experiment != "IBR" | variable != "rep2") %>%
-  mutate(Replicate = ifelse(variable == "rep2", "2", Replicate)) %>%
-  dplyr::select(-variable) %>%
-  rename("RelInt" = "value") %>%
-  ungroup() %>%
-  mutate(RelInt = if_else(RelInt<0, abs(RelInt), RelInt),
-         RelInt = if_else((Experiment == "Ctrl"& Replicate == 2),
-                                   RelInt, RelInt))
-
-# We can now look at the distributions of inter-replicate differences both Experiments:
-completeData %>%
-  pivot_wider(., names_from = "Replicate",
-              values_from = "RelInt") %>%
-  rename("Rep_1" = "1",
-         "Rep_2" = "2") %>%
-  mutate(Difference = Rep_1 - Rep_2)%>%
-  ggplot(aes(x=Difference, group=Experiment, color=Experiment)) +
-  geom_histogram(aes(y = ..density..), bins = 100,
-                alpha = 0.7, boundary = 0)+
-  scale_x_continuous(breaks = seq(-40, 40, by = 10))+
-  theme_bw()
-
-
 # 3. Model fitting ----
 # 3.1 Illustrative example----
 # In order to assess differences between protein elution profiles of each Experiment
@@ -292,26 +208,22 @@ completeData %>%
 # the alternative model, which fits a smoothing spline for each Experiment separately.
 #
 # For demonstrative purpose we will illustrate our approach for a singular protein first.
-DDX42 <- completeData %>%
-  filter(GeneName == "DDX42")
+ddx42 <- data_averaged %>%
+  filter(gene_name == "DDX42")
 
-# The DDX42 data contains the relative intensities from two replicates and both Experiments.
-DDX42 %>%
-  dplyr::select(!ProteinName) %>%
-  pivot_wider(., names_from = c(Experiment, Replicate),
-              values_from = "RelInt") %>%
-  relocate(Ctrl_2, .after = Ctrl_1) %>%
-  kable(digits = 2)
-
-# We can visualise the differences between treatments and replicates in a plot:
-DDX42_plot <-
-  DDX42 %>%
-  ggplot(aes(x=fct_inorder(Fraction), y=RelInt)) +
-  geom_point(aes(shape = Replicate, color = Experiment), size = 2)+
-  theme_bw()+
-  ggtitle("DDX42")+
-  scale_color_manual("", values = c("darkgrey", "darkred"))
-print(DDX42_plot)
+# Composite figure with data points without model and both models with fitted lines
+ddx_plot <- ddx42 %>%
+  ggplot(aes(x = fraction, y = relative_intensity, color = treatment)) +
+  # geom_point(aes(shape = treatment), size = 2) +
+  geom_line(size = 1.2, alpha = 0.75) +
+  theme_tufte() +
+  geom_rangeframe() +
+  theme(legend.position = "bottom") +
+  labs(y = "Relative Intensity [%]",
+       x = "Fraction", 
+       title = "DDX42") +
+  scale_color_manual("", values = c("darkblue", "darkred"))
+print(ddx_plot)
 
 # For our model fitting we create a basic fitting function :
 fitss <-  function(df){
