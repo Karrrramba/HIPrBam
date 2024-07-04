@@ -156,11 +156,11 @@ correlations <- data_rel %>%
               values_from = relative_intensity) %>% 
   group_by(gene_name) %>% 
   mutate(pearson = cor(ibr1, ibr2, method = "pearson")) %>% 
-  summarize(pearson = mean(pearson))
+  summarize(pearson = mean(pearson)) %>% 
+  ungroup()
 
-correlations %>% 
-  filter(pearson >= 0.8) %>% 
-  nrow()
+data_filtered <- data_rel %>% 
+  filter(gene_name %in% correlations[correlations$pearson >= 0.8, 'gene_name'])
 
 # The data table now has the following columns:
 #   - protein_id = Unique Uniprot identifier.
@@ -185,29 +185,6 @@ correlations %>%
 # 2.1
 # We will further consider only those proteins with reproducible HIC profiles.
 # To do this we determine the inter-replicate correlation per protein.
-IBR_rep_diff <- data %>%
-  subset(Experiment == "IBR") %>%
-  pivot_wider(., names_from = "Replicate",
-              values_from = "RelInt") %>%
-  rename("IBR_1" = "1", "IBR_2" = "2") %>%
-  group_by(UniprotID) %>%
-  summarise(PearsonR = cor(IBR_1, IBR_2, method = "pearson"))
-
-correlated_prot <-
-  data%>%
-  subset(Experiment == "IBR") %>%
-  pivot_wider(., names_from = "Replicate",
-              values_from = "RelInt") %>%
-  rename("IBR_1" = "1",
-         "IBR_2" = "2") %>%
-  mutate(Difference = IBR_1 - IBR_2) %>%
-  left_join(., IBR_rep_diff, by = "UniprotID") %>%
-  group_by(UniprotID) %>%
-  # filter proteins with inter-replicate deviations >20% and Pearson <0.8
-  filter(PearsonR > 0.8,
-         all(abs(Difference) < 0.2)) %>%
-  ungroup()
-
 
 hist(test_dataset$Difference, freq = FALSE, breaks = 25)
 descdist(test_dataset$Difference, discrete = FALSE)
