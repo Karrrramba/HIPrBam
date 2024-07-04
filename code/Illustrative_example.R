@@ -2,6 +2,7 @@ library(mgcv)
 library(tidyverse)
 library(reshape2)
 library(ggpubr)
+library(ggthemes)
 library(scales)
 library(broom)
 library(knitr)
@@ -9,26 +10,45 @@ library(parallel)
 library(fitdistrplus)
 library(metRology)
 
+ddx42 <- data_averaged %>%
+  filter(gene_name == "DDX42")
+
+# Composite figure with data points without model and both models with fitted lines
+ddx_plot <- ddx42 %>%
+  ggplot(aes(x = fraction, y = relative_intensity, color = treatment)) +
+  # geom_point(aes(shape = treatment), size = 2) +
+  geom_line(size = 1.2, alpha = 0.75) +
+  theme_tufte() +
+  geom_rangeframe() +
+  theme(legend.position = "bottom") +
+  labs(y = "Relative Intensity [%]",
+       x = "Fraction", 
+       title = "DDX42") +
+  scale_color_manual("", values = c("darkblue", "darkred"))
+print(ddx_plot)
+
+max(ddx42$fraction)
+
 # Model functions
 null_model <- function(df){
-  with(df, bam(RelInt ~ s(Fraction, k = nlevels(df$Fraction)) + factor(Experiment) + factor(Replicate),
+  with(df, gam(relative_intensity ~ s(fraction, k = max(df$fraction)) + factor(treatment),
                data = df,
                method = "REML",
-               family = gaussian(),
+               family = "gaussian",
                robust = TRUE))
 }
 
 alt_model <- function(df){
-  with(df, bam(RelInt ~ s(Fraction, k = nlevels(df$Fraction), by=factor(Experiment)) + factor(Replicate),
+  with(df, gam(relative_intensity ~ s(fraction, k = max(df$fraction), by=factor(treatment)),
                data = df,
                method = "REML",
-               family = gaussian(),
+               family = "gaussian",
                robust = TRUE))
 }
 
 # Extract residuals from the combined model
-DDX42_null_model <- null_model(DDX42)
-DDX42_alt_model <- alt_model(DDX42)
+ddx42_null_model <- null_model(ddx42)
+ddx42_alt_model <- alt_model(ddx42)
 
 null_residuals <- residuals(combined_model)
 # Quantify the differences between model fits with the  likelihood ratio test
