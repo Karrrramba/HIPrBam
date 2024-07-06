@@ -1,16 +1,16 @@
 #load packages
-library(broom)
+# library(broom)
 # library(fitdistrplus)
-library(ggExtra)
-library(ggpubr)
-library(ggthemes)
-library(gt)
-library(knitr)
-library(metRology)
-library(mgcv)
-library(renv)
-library(reshape2)
-library(scales)
+# library(ggExtra)
+# library(ggpubr)
+# library(ggthemes)
+# library(gt)
+# library(knitr)
+# library(metRology)
+# library(mgcv)
+# library(renv)
+# library(reshape2)
+# library(scales)
 library(tidyverse)
 
 # Data import and transformation----
@@ -109,8 +109,6 @@ update_names <- function(data) {
 } 
 
 data_updated <- update_names(data_clean)
-
-data_updated <- data_updated %>% select(!dplyr::contains("protein"))
 
 transform_intensities <- function(data){
   
