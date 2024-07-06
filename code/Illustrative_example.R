@@ -1,14 +1,14 @@
-library(mgcv)
-library(tidyverse)
-library(reshape2)
-library(ggpubr)
+# library(broom)
+# library(fitdistrplus)
+# library(ggpubr)
 library(ggthemes)
-library(scales)
-library(broom)
-library(knitr)
-library(parallel)
-library(fitdistrplus)
-library(metRology)
+# library(knitr)
+library(mgcv)
+# library(parallel)
+# library(metRology)
+# library(reshape2)
+# library(scales)
+library(tidyverse)
 
 ddx42 <- data_averaged %>%
   filter(gene_name == "DDX42")
@@ -17,7 +17,7 @@ ddx42 <- data_averaged %>%
 ddx_plot <- ddx42 %>%
   ggplot(aes(x = fraction, y = relative_intensity, color = treatment)) +
   # geom_point(aes(shape = treatment), size = 2) +
-  geom_line(size = 1.2, alpha = 0.75) +
+  geom_line(lwd = 1.2, alpha = 0.75) +
   theme_tufte() +
   geom_rangeframe() +
   theme(legend.position = "bottom") +
@@ -27,21 +27,21 @@ ddx_plot <- ddx42 %>%
   scale_color_manual("", values = c("darkblue", "darkred"))
 print(ddx_plot)
 
-max(ddx42$fraction)
-
 # Model functions
 null_model <- function(df){
   with(df, gam(relative_intensity ~ s(fraction, k = max(df$fraction)) + factor(treatment),
-               data = df,
+               data = df_averaged,
                method = "REML",
+               sp = c(),
                family = "gaussian",
                robust = TRUE))
 }
 
 alt_model <- function(df){
   with(df, gam(relative_intensity ~ s(fraction, k = max(df$fraction), by=factor(treatment)),
-               data = df,
+               data = df_averaged,
                method = "REML",
+               sp = ,
                family = "gaussian",
                robust = TRUE))
 }
