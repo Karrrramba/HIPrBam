@@ -1,16 +1,5 @@
 #load packages
-# library(broom)
-# library(fitdistrplus)
-# library(ggExtra)
-# library(ggpubr)
-# library(ggthemes)
-# library(gt)
-# library(knitr)
-# library(metRology)
-# library(mgcv)
-# library(renv)
-# library(reshape2)
-# library(scales)
+
 library(tidyverse)
 
 # Data import and transformation----
@@ -160,8 +149,7 @@ correlations <- data_rel %>%
   group_by(gene_name) %>% 
   mutate(pearson = cor(ibr1, ibr2, method = "pearson")) %>% 
   summarize(pearson = mean(pearson)) %>% 
-  ungroup() %>% 
-  mutate(gene_name = as.character(gene_name))
+  ungroup() 
 
 # hist(correlations$pearson)
 # boxplot(correlations$pearson)
@@ -179,8 +167,9 @@ data_averaged <- data_rel %>%
   pivot_longer(cols = c(ctrl, ibr),
                names_to = "treatment",
                values_to = "relative_intensity") %>% 
+  mutate(treatment = as.factor(treatment)) %>% 
   select(!c(ibr1, ibr2)) %>% 
   relocate(treatment, .after = gene_name) %>% 
   group_by(gene_name, treatment) %>% 
   arrange(gene_name, treatment, fraction) %>% 
-  ungroup()
+  ungroup() 
