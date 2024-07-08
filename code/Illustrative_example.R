@@ -13,19 +13,34 @@ library(tidyverse)
 ddx42 <- data_averaged %>%
   filter(gene_name == "DDX42")
 
+
 # Composite figure with data points without model and both models with fitted lines
 ddx_plot <- ddx42 %>%
   ggplot(aes(x = fraction, y = relative_intensity, color = treatment)) +
-  # geom_point(aes(shape = treatment), size = 2) +
-  geom_line(lwd = 1.2, alpha = 0.75) +
+  geom_point(aes(shape = treatment), size = 2) +
+  # geom_line(lwd = 1.2, alpha = 0.75) +
   theme_tufte() +
   geom_rangeframe() +
   theme(legend.position = "bottom") +
   labs(y = "Relative Intensity [%]",
        x = "Fraction", 
        title = "DDX42") +
-  scale_color_manual("", values = c("darkblue", "darkred"))
+  scale_color_manual("", values = c("cyan", "darkred"))
 print(ddx_plot)
+
+lambda <- 10^(3:5)
+ddx_new <- ddx42 %>% select(fraction, treatment)
+fit_null <- lapply(lambda, function(lambda) gam(relative_intensity ~ s(fraction, k = 35, sp = lambda, bs = "ad"),
+                                                method = "REML",
+                                                family = "gaussian",
+                                                data = ddx42))
+
+# Alternative model with treatment as factor. Applies different smooths for each treatment level.
+fit_alt <- lapply(lambda, function(lambda) gam(relative_intensity ~ treatment + s(fraction, by =  treatment, k = 35, sp = lambda, bs = "ad"),
+                                               method = "REML",
+                                               family = "gaussian", 
+                                               data = ddx42))
+
 
 # Model functions
 null_model <- function(df){
@@ -38,7 +53,7 @@ null_model <- function(df){
 }
 
 alt_model <- function(df){
-  with(df, gam(relative_intensity ~ s(fraction, k = max(df$fraction), by=factor(treatment)),
+  with(df, gam(relative_intensity ~ s(fraction, k = max(df$fraction), by = factor(treatment)),
                data = df_averaged,
                method = "REML",
                sp = ,
