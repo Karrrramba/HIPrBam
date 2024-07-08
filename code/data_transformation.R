@@ -146,6 +146,7 @@ correlations <- data_rel %>%
   pivot_wider(id_cols = c(gene_name, fraction),
               names_from = experiment,
               values_from = relative_intensity) %>% 
+  mutate(gene_name = as.character(gene_name)) %>% 
   group_by(gene_name) %>% 
   mutate(pearson = cor(ibr1, ibr2, method = "pearson")) %>% 
   summarize(pearson = mean(pearson)) %>% 
@@ -161,6 +162,7 @@ data_averaged <- data_rel %>%
   pivot_wider(id_cols = c(gene_name, fraction),
               names_from = experiment,
               values_from = relative_intensity) %>% 
+  
   rowwise() %>% 
   mutate(ibr = round(mean(c(ibr1, ibr2)), 1)) %>% 
   ungroup() %>% 
