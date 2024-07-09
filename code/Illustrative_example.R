@@ -17,6 +17,7 @@ ddx42 <- data_averaged %>%
 ddx_plot <- ddx42 %>%
   ggplot(aes(x = fraction, y = relative_intensity, color = treatment)) +
   geom_point(aes(shape = treatment), size = 2) +
+  scale_color_manual("", values = c("cyan", "darkred")) +
   # geom_line(lwd = 1.2, alpha = 0.75) +
   theme_tufte() +
   geom_rangeframe() +
@@ -24,7 +25,6 @@ ddx_plot <- ddx42 %>%
   labs(y = "Relative Intensity [%]",
        x = "Fraction", 
        title = "DDX42") +
-  scale_color_manual("", values = c("cyan", "darkred"))
 print(ddx_plot)
 
 ddx_preds <- ddx42 %>% 
@@ -32,8 +32,8 @@ ddx_preds <- ddx42 %>%
   rename(original = relative_intensity)
 
 N <-  70
-lambda <- 10^(-3:-5)
-fit_null <- lapply(lambda, function(lambda) gam(formula = relative_intensity ~ s(fraction, k= 35, sp = lambda, bs = "ad") + treatment,
+lambda <- 10^(-7:-10)
+fit_null <- lapply(lambda, function(lambda) gam(formula = relative_intensity ~ s(fraction, k = 35, sp = lambda) + treatment,
                                                 method = "REML",
                                                 family = "gaussian",
                                                 data = ddx42))
@@ -44,7 +44,7 @@ colnames(pred_null) <- paste0(lambda, "_null")
 # Alternative model with treatment as factor. Applies different smooths for each treatment level.
 fit_alt <- lapply(
   lambda, function(lambda) gam(
-    formula = relative_intensity ~ treatment + s(fraction, by =  treatment, k = 35, sp = lambda),
+    formula = relative_intensity ~ treatment + s(fraction, by = treatment, k = 35, sp = lambda),
     method = "REML",
     family = "gaussian",
     data = ddx42
@@ -56,7 +56,7 @@ colnames(pred_alt) <- paste0(lambda, "_alt")
 
 ddx_preds <- cbind(ddx_preds, pred_null, pred_alt)
 ddx_preds <- ddx_preds %>% 
-  pivot_longer(cols = 4:9,
+  pivot_longer(cols = -(1:4),
                names_to = c("lambda", "model"),
                names_pattern = "(.+)_(.+)",
                values_to = "pred_value"
@@ -64,8 +64,37 @@ ddx_preds <- ddx_preds %>%
   mutate(pred_value = case_when(
     pred_value < 0 ~ 0,
     .default = pred_value
-  ))
+  )) %>% 
+  group_by(treatment, fraction, lambda) %>% 
+  arrange(lambda)
 
+
+null_model_plot <- ddx_plot +
+  geom_line(data = ddx_preds %>% filter(treatment == "ctrl" & model == "null"), 
+            aes(x = fraction, y = pred_value, group = lambda),
+            color = "orange", lwd = 1.5, alpha = 0.5) +
+  facet_wrap(~ lambda)
+null_model_plot
+
+ddx_plot +
+  geom_line(data = ddx_preds %>% filter(model == "alt" ), 
+            aes(x = fraction, y = pred_value, group = treatment),
+            lwd = 1.5, alpha = 0.5) +
+  facet_wrap(~ lambda)
+
+
+fit_models <- function(data){
+  N = max(as.numeric(data$fraction))
+}
+
+rss <- NA
+new_lambda <- NA
+for (i in seq(lambda)) {
+  
+  rss[i] <- sum(fit_alt[[i]][[2]]^2)
+  
+}
+new_lambda <- min(rss)
 # Model functions
 null_model <- function(df){
   with(ddx42, gam(relative_intensity ~ s(fraction, k = 35, sp = lambda) ,
@@ -82,6 +111,9 @@ alt_model <- function(df){
                family = "gaussian",
                robust = TRUE))
 }
+
+# function that optimizes lambda based on the residuals
+
 
 # Extract residuals from the combined model
 ddx42_null_model <- null_model(ddx42)
