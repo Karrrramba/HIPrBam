@@ -13,7 +13,6 @@ library(tidyverse)
 ddx42 <- data_averaged %>%
   filter(gene_name == "DDX42")
 
-
 # Composite figure with data points without model and both models with fitted lines
 ddx_plot <- ddx42 %>%
   ggplot(aes(x = fraction, y = relative_intensity, color = treatment)) +
@@ -28,35 +27,58 @@ ddx_plot <- ddx42 %>%
   scale_color_manual("", values = c("cyan", "darkred"))
 print(ddx_plot)
 
-lambda <- 10^(3:5)
-ddx_new <- ddx42 %>% select(fraction, treatment)
-fit_null <- lapply(lambda, function(lambda) gam(relative_intensity ~ s(fraction, k = 35, sp = lambda, bs = "ad"),
+ddx_preds <- ddx42 %>% 
+  select(fraction, treatment, relative_intensity) %>% 
+  rename(original = relative_intensity)
+
+N <-  70
+lambda <- 10^(-3:-5)
+fit_null <- lapply(lambda, function(lambda) gam(formula = relative_intensity ~ s(fraction, k= 35, sp = lambda, bs = "ad") + treatment,
                                                 method = "REML",
                                                 family = "gaussian",
                                                 data = ddx42))
 
-# Alternative model with treatment as factor. Applies different smooths for each treatment level.
-fit_alt <- lapply(lambda, function(lambda) gam(relative_intensity ~ treatment + s(fraction, by =  treatment, k = 35, sp = lambda, bs = "ad"),
-                                               method = "REML",
-                                               family = "gaussian", 
-                                               data = ddx42))
+pred_null <- vapply(fit_null, predict, numeric(N), newdata = ddx_preds)
+colnames(pred_null) <- paste0(lambda, "_null")
 
+# Alternative model with treatment as factor. Applies different smooths for each treatment level.
+fit_alt <- lapply(
+  lambda, function(lambda) gam(
+    formula = relative_intensity ~ treatment + s(fraction, by =  treatment, k = 35, sp = lambda),
+    method = "REML",
+    family = "gaussian",
+    data = ddx42
+    )
+  )
+
+pred_alt <-  vapply(fit_alt, predict, numeric(N), newdata = ddx_preds)
+colnames(pred_alt) <- paste0(lambda, "_alt")
+
+ddx_preds <- cbind(ddx_preds, pred_null, pred_alt)
+ddx_preds <- ddx_preds %>% 
+  pivot_longer(cols = 4:9,
+               names_to = c("lambda", "model"),
+               names_pattern = "(.+)_(.+)",
+               values_to = "pred_value"
+               ) %>% 
+  mutate(pred_value = case_when(
+    pred_value < 0 ~ 0,
+    .default = pred_value
+  ))
 
 # Model functions
 null_model <- function(df){
-  with(df, gam(relative_intensity ~ s(fraction, k = max(df$fraction)) + factor(treatment),
-               data = df_averaged,
+  with(ddx42, gam(relative_intensity ~ s(fraction, k = 35, sp = lambda) ,
+               data = ddx42,
                method = "REML",
-               sp = c(),
                family = "gaussian",
                robust = TRUE))
 }
 
 alt_model <- function(df){
-  with(df, gam(relative_intensity ~ s(fraction, k = max(df$fraction), by = factor(treatment)),
+  with(df, gam(relative_intensity ~ s(fraction, k = 35, by = factor(treatment)),
                data = df_averaged,
                method = "REML",
-               sp = ,
                family = "gaussian",
                robust = TRUE))
 }
