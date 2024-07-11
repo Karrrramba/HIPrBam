@@ -99,6 +99,37 @@ update_names <- function(data) {
 
 data_updated <- update_names(data_clean)
 
+# Prepare data for t-test-----
+data_updated %>% 
+  select(!c(intensity_l, intensity_m, intensity_h)) %>% 
+  pivot_longer(
+    cols = tidyselect::matches("([l|m|h]_f.+)"),
+    names_to = c("experiment", "fraction"),
+    names_pattern = "intensity_(.)_f(.+)$",
+    values_to = "intensity"
+  ) %>% 
+  mutate(experiment = case_when(
+    experiment == "l" ~ "ctrl",
+    experiment == "m" ~ "ibr1",
+    experiment == "h" ~ "ibr2"
+  )) %>% 
+  mutate(across(c(experiment, gene_name), as.factor)) %>% 
+  mutate(across(c(fraction, intensity), as.numeric)) %>% 
+  
+
+  
+  pivot_wider(id_cols = c(gene_name, treatment),
+              names_from = fraction,
+              names_prefix = "fraction",
+              values_from = intensity)
+  
+
+# t-test with mutate(fdr = p.adjust(p_value, method = "BH"))
+
+
+# volcano plot fdr vs. ratio
+
+# Prepare data for modeling-----
 transform_intensities <- function(data){
   
   long <- data %>% 
