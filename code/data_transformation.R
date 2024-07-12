@@ -19,7 +19,7 @@ parse_fasta_file <- function(file){
   # Retrieve protein ID, protein name and gene name 
   protein_id <- str_extract(meta, "^(\\w+)")
   protein_name <- gsub("(HUMAN )|( OS)","", str_extract(meta, "HUMAN(.+) OS"))
-  gene_name <- gsub("GN=", "",str_extract(meta, "GN=(\\w+)"))
+  gene_name <- gsub("GN=", "", str_extract(meta, "GN=(\\w+.\\d+)"))
   
   # Identify AA sequence start and end indexes
   aa_seq_start_indx <- meta_indx + 1
