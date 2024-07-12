@@ -71,8 +71,14 @@ clean_data <- function(data){
   data <- data[-del_row, -del_col]
   
   # Remove proteins entries with 0 intensities in any of the replicates
-  data <- data %>% 
-    filter(!if_any(c(intensity_l, intensity_m, intensity_h), ~.x == 0))
+  
+  if (any(grepl("ratio", names(silac_clean)))) {
+    data <- data %>%
+      filter(!if_any(ends_with("l_normalized"), is.nan))
+  } else {
+    data <- data %>%
+      filter(!if_any(ends_with("(l|m|h)"), ~.x == 0))
+  }
   
   data
 }
@@ -99,35 +105,6 @@ update_names <- function(data) {
 
 data_updated <- update_names(data_clean)
 
-# Prepare data for t-test-----
-data_updated %>% 
-  select(!c(intensity_l, intensity_m, intensity_h)) %>% 
-  pivot_longer(
-    cols = tidyselect::matches("([l|m|h]_f.+)"),
-    names_to = c("experiment", "fraction"),
-    names_pattern = "intensity_(.)_f(.+)$",
-    values_to = "intensity"
-  ) %>% 
-  mutate(experiment = case_when(
-    experiment == "l" ~ "ctrl",
-    experiment == "m" ~ "ibr1",
-    experiment == "h" ~ "ibr2"
-  )) %>% 
-  mutate(across(c(experiment, gene_name), as.factor)) %>% 
-  mutate(across(c(fraction, intensity), as.numeric)) %>% 
-  
-
-  
-  pivot_wider(id_cols = c(gene_name, treatment),
-              names_from = fraction,
-              names_prefix = "fraction",
-              values_from = intensity)
-  
-
-# t-test with mutate(fdr = p.adjust(p_value, method = "BH"))
-
-
-# volcano plot fdr vs. ratio
 
 # Prepare data for modeling-----
 transform_intensities <- function(data){
@@ -206,3 +183,45 @@ data_averaged <- data_rel %>%
   group_by(gene_name, treatment) %>% 
   arrange(gene_name, treatment, fraction) %>% 
   ungroup() 
+
+# Prepare data for t-test-----
+data_updated %>%
+  filter(as.character(gene_name) %in% correlated) %>%
+  select(!c(intensity_l, intensity_m, intensity_h)) %>%
+  pivot_longer(
+    cols = tidyselect::matches("([l|m|h]_f.+)"),
+    names_to = c("experiment", "fraction"),
+    names_pattern = "intensity_(.)_f(.+)$",
+    values_to = "intensity"
+  ) %>%
+  mutate(experiment = case_when(
+    experiment == "l" ~ "ctrl",
+    experiment == "m" ~ "ibr1",
+    experiment == "h" ~ "ibr2"
+  )) %>%
+  mutate(across(c(experiment, gene_name), as.factor)) %>%
+  mutate(across(c(fraction, intensity), as.numeric)) %>%
+  pivot_wider(id_cols = c(gene_name, fraction),
+              names_from = experiment,
+              values_from = intensity) %>% 
+  
+  rowwise() %>% 
+  mutate(ibr = round(mean(c(ibr1, ibr2)), 1)) %>% 
+  select(!c(ibr1, ibr2)) %>% 
+  pivot_longer(cols = c(ctrl, ibr),
+               names_to = "treatment",
+               values_to = "intensity") %>% 
+  mutate(intensity = log2(intensity))
+
+
+
+  pivot_wider(id_cols = c(gene_name, treatment),
+              names_from = fraction,
+              names_prefix = "fraction",
+              values_from = intensity)
+  
+
+# t-test with mutate(fdr = p.adjust(p_value, method = "BH"))
+
+
+# volcano plot fdr vs. ratio
