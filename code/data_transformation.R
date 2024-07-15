@@ -37,9 +37,11 @@ parse_fasta_file <- function(file){
   set <- data.frame(protein_id, protein_name, gene_name, aa_seq)
   full_set <- set[!is.na(set$gene_name) & !is.na(set$protein_id), ]
   
-  full_set
+  return(full_set)
   
 }
+
+proteome_data <- parse_fasta_file(fasta_path)
 
 data_raw <- readr::read_tsv("data-raw/proteinGroups.txt", 
                             col_types = cols(
@@ -58,8 +60,6 @@ data_raw <- readr::read_tsv("data-raw/proteinGroups.txt",
                             )
 )
 
-proteome_data <- parse_fasta_file(fasta_path)
-
 clean_data <- function(data){
   # Make clean column names
   data <- janitor::clean_names(data, abbreviations = "ID")
@@ -71,16 +71,15 @@ clean_data <- function(data){
   data <- data[-del_row, -del_col]
   
   # Remove proteins entries with 0 intensities in any of the replicates
-  
-  if (any(grepl("ratio", names(silac_clean)))) {
+  if (any(grepl("ratio", names(data)))) {
     data <- data %>%
       filter(!if_any(ends_with("l_normalized"), is.nan))
   } else {
-    data <- data %>%
-      filter(!if_any(ends_with("(l|m|h)"), ~.x == 0))
+    data <- data %>% 
+      filter(!if_any(matches("(l|m|h)$"), ~.x == 0))
   }
   
-  data
+  return(data)
 }
 
 data_clean <- clean_data(data_raw)
@@ -99,7 +98,7 @@ update_names <- function(data) {
     ungroup() %>% 
     select(!dplyr::contains("protein"))
   
-  data
+  return(data)
   
 } 
 
@@ -141,7 +140,7 @@ transform_intensities <- function(data){
     arrange(gene_name, experiment, fraction) %>% 
     ungroup()
   
-  rel
+  return(rel)
   
 }
 
