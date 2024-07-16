@@ -28,6 +28,14 @@ silac_annotated <- silac_clean %>%
   select(!c(contains("h_m"), ends_with("normalized"), majority_protein_id, protein_name)) 
 
 silac_tranformed <- silac_annotated %>% 
+  mutate(across(starts_with("ratio"), ~.x - median(.x))) %>% 
+  pivot_longer(cols = starts_with("ratio"),
+               names_to = c("experiment", "fraction"),
+               names_pattern = "ratio_(.+)_normalized_f(\\d+)",
+               values_to = "ratio") %>% 
+  mutate(fraction = as.numeric(fraction)) %>% 
+  apply(., 2, t.test, alternative = "two.sided", )
+  pivot_wider()
   mutate(ratio = if_else(!is.nan(ratio), log2(ratio), ratio))
 
 # t-test with mutate(fdr = p.adjust(p_value, method = "BH"))
