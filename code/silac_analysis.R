@@ -33,11 +33,22 @@ silac_tranformed <- silac_annotated %>%
                names_to = c("experiment", "fraction"),
                names_pattern = "ratio_(.+)_normalized_f(\\d+)",
                values_to = "ratio") %>% 
-  mutate(fraction = as.numeric(fraction)) %>% 
-  apply(., 2, t.test, alternative = "two.sided", )
-  pivot_wider()
-  mutate(ratio = if_else(!is.nan(ratio), log2(ratio), ratio))
+  pivot_wider(id_cols = c(gene_name, protein_id, fraction),
+              names_from = experiment,
+              values_from = ratio) %>% 
+  mutate(fraction = as.numeric(fraction)) %>%
+  arrange(fraction) %>% 
+  mutate(ratio =  mean(m_l, h_l)) %>% 
+  pivot_wider(id_cols = c(gene_name, protein_id),
+              names_from = fraction,
+              names_prefix = "fraction_",
+              values_from = ratio)
+  
 
+
+# filter gene names based of correlation?
+silac_corr <- silcac_transformed %>% 
+  filter(gene_name %in% correlated)
 # t-test with mutate(fdr = p.adjust(p_value, method = "BH"))
 
 
