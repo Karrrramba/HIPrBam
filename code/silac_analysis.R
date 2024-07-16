@@ -28,6 +28,7 @@ silac_annotated <- silac_clean %>%
   select(!c(contains("h_m"), ends_with("normalized"), majority_protein_id, protein_name)) 
 
 silac_tranformed <- silac_annotated %>% 
+  # Median normalization
   mutate(across(starts_with("ratio"), ~.x - median(.x))) %>% 
   pivot_longer(cols = starts_with("ratio"),
                names_to = c("experiment", "fraction"),
@@ -39,17 +40,18 @@ silac_tranformed <- silac_annotated %>%
   mutate(fraction = as.numeric(fraction)) %>%
   arrange(fraction) %>% 
   mutate(ratio =  mean(m_l, h_l)) %>% 
+  mutate(ratio = log2(ratio)) %>% 
   pivot_wider(id_cols = c(gene_name, protein_id),
               names_from = fraction,
               names_prefix = "fraction_",
               values_from = ratio)
   
-
+# t-test with mutate(fdr = p.adjust(p_value, method = "BH"))
+silac_t_results <- apply(silac_tranformed, 2, t.test, alternative = "two.sided")
 
 # filter gene names based of correlation?
 silac_corr <- silcac_transformed %>% 
   filter(gene_name %in% correlated)
-# t-test with mutate(fdr = p.adjust(p_value, method = "BH"))
 
 
 # volcano plot fdr vs. ratio
