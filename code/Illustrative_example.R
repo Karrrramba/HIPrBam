@@ -67,7 +67,7 @@ lambda <- 10^-10
 
 
 # Model functions
-null_model <- function(data){
+model_null <- function(data){
   
   K = max(as.numeric(data$fraction))
   
@@ -78,7 +78,7 @@ null_model <- function(data){
                robust = TRUE))
 }
 
-alt_model <- function(data){
+model_alt <- function(data){
   
   K = max(as.numeric(data$fraction))
   
@@ -89,8 +89,9 @@ alt_model <- function(data){
                robust = TRUE))
 }
 
-ddx42_null_model <- null_model(ddx42)
-ddx42_alt_model <- alt_model(ddx42)
+ddx42_null_model <- model_null(ddx42)
+ddx42_alt_model <- model_alt(ddx42)
+
 
 compute_rss = function(model) {
   rss <- sum(sapply(model[[2]], FUN = function(x) x^2))
@@ -98,17 +99,16 @@ compute_rss = function(model) {
 }
 compute_rss(ddx42_null_model)
 
-rss_null = compute_rss(ddx42_null_model)
-rss_alt = compute_rss(ddx42_alt_model)
+rss_null = round(compute_rss(ddx42_null_model), 2)
+rss_alt = round(compute_rss(ddx42_alt_model), 2)
 
 # Add fitted values and residuals from each model to the data.
-ddx42_preds_ad <- ddx42_pred %>% 
+ddx42_pred <- ddx42 %>% 
   mutate(fit_null = fitted(ddx42_null_model),
-         fit_alt = fitted(ddx42_alt_model),
-         )
+         fit_alt = fitted(ddx42_alt_model))
 
 # Composite figure with data points without model and both models with fitted lines
-ddx_base_plot <- ddx42 %>%
+ddx_base_plot <- ddx42_pred %>%
   ggplot(aes(x = fraction, y = relative_intensity)) +
   geom_point(aes(shape = treatment), color = "black", size = 2) +
   scale_shape_manual(values = c("ctrl" = 2, "ibr" = 19)) +
@@ -132,22 +132,27 @@ ddx_original_plot <- ddx_base_plot +
         axis.text.x = element_blank())
 
 ddx_null_plot <- ddx_base_plot +
-  geom_line(data = distinct(ddx42_preds_ad, fraction, fit_null),
+  geom_line(data = distinct(ddx42_pred, fraction, fit_null),
             aes(x = fraction, y = fit_null),
             lwd = 1.2, 
             alpha = 0.5, 
-            color = "honeydew4") +
-  labs(color = "Model")
+            color = "plum4") +
+  geom_line(aes(group = fraction), color = "mediumpurple1", lty = 2) +
+  annotate(geom = "label", x = 5, y = 20, label =  expression(RSS[null] == 109.3), parse = TRUE, size = 8)
+ddx_null_plot
 
 ddx_alt_plot <- ddx_base_plot +
-  geom_line(data = ddx42_preds_ad,
+  geom_line(data = ddx42_pred,
             aes(x = fraction, y = fit_alt, group = treatment,
                 color = treatment), 
             linewidth = 1.2, 
             alpha = 0.5) +
+  geom_line(aes(group = fraction), lty = 2) +
+  scale_color_manual(values = c("red2","gold2")) + 
+  annotate(geom = "label", x = 5, y = 20, label =  expression(RSS[null] == 9.78), parse = TRUE, size = 8) +
   geom_rangeframe(sides = 'b') +
-  theme(legend.position = "bottom") +
-  labs(color = "Model")
+ddx_alt_plot
+
 
 ddx_original_plot / ddx_null_plot / ddx_alt_plot + 
   plot_layout(axis_titles = "collect", guides = "collect", axes = "collect_y") +
