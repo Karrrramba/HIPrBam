@@ -67,40 +67,45 @@ lambda <- 10^-10
 
 
 # Model functions
-null_model <- function(df){
+null_model <- function(data){
   
   K = max(as.numeric(data$fraction))
   
-  with(df, gam(relative_intensity ~ s(fraction, k = K, sp = lambda),
-               data = df,
+  with(data, gam(relative_intensity ~ s(fraction, k = K, bs = "ad"),
+               data = data,
                method = "REML",
                family = "gaussian",
                robust = TRUE))
 }
 
-alt_model <- function(df){
+alt_model <- function(data){
   
   K = max(as.numeric(data$fraction))
   
-  with(df, gam(relative_intensity ~ s(fraction, by = treatment, k = K, sp = lambda),
-               data = df,
+  with(data, gam(relative_intensity ~ s(fraction, by = treatment, k = K, bs = "ad"),
+               data = data,
                method = "REML",
                family = "gaussian",
                robust = TRUE))
 }
 
-
-# Extract residuals from the combined model
 ddx42_null_model <- null_model(ddx42)
 ddx42_alt_model <- alt_model(ddx42)
 
-# Quantify the differences between model fits with the  likelihood ratio test
-ddx_lrt <- anova(ddx42_null_model, ddx42_alt_model, test = "LRT")
+compute_rss = function(model) {
+  rss <- sum(sapply(model[[2]], FUN = function(x) x^2))
+  return(rss)
+}
+compute_rss(ddx42_null_model)
+
+rss_null = compute_rss(ddx42_null_model)
+rss_alt = compute_rss(ddx42_alt_model)
 
 # Add fitted values and residuals from each model to the data.
-ddx42_preds <- ddx42_preds %>% 
+ddx42_preds_ad <- ddx42_pred %>% 
   mutate(fit_null = fitted(ddx42_null_model),
-         fit_alt = fitted(ddx42_alt_model))
+         fit_alt = fitted(ddx42_alt_model),
+         )
 
 # Composite figure with data points without model and both models with fitted lines
 ddx_base_plot <- ddx42 %>%
@@ -127,7 +132,7 @@ ddx_original_plot <- ddx_base_plot +
         axis.text.x = element_blank())
 
 ddx_null_plot <- ddx_base_plot +
-  geom_line(data = distinct(ddx42_pred, fraction, fit_null),
+  geom_line(data = distinct(ddx42_preds_ad, fraction, fit_null),
             aes(x = fraction, y = fit_null),
             lwd = 1.2, 
             alpha = 0.5, 
@@ -135,7 +140,7 @@ ddx_null_plot <- ddx_base_plot +
   labs(color = "Model")
 
 ddx_alt_plot <- ddx_base_plot +
-  geom_line(data = ddx42_pred,
+  geom_line(data = ddx42_preds_ad,
             aes(x = fraction, y = fit_alt, group = treatment,
                 color = treatment), 
             linewidth = 1.2, 
