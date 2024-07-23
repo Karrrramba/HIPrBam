@@ -13,11 +13,22 @@ ddx42 <- data_averaged %>%
 ddx_preds <- ddx42 %>% 
   select(fraction, treatment, relative_intensity)
 
-fit_gam <- function(data){
+fit_null_model <- function(data){
   lambda <- 10^-12
   K = max(as.numeric(data$fraction))
   
   with(data, gam(relative_intensity ~ s(fraction, k = K, sp = lambda),
+                 data = data,
+                 method = "REML",
+                 family = "gaussian",
+                 robust = TRUE))
+}
+
+fit_alt_model <- function(data){
+  lambda <- 10^-12
+  K = max(as.numeric(data$fraction))
+  
+  with(data, gam(relative_intensity ~ s(fraction, by = treatment, k = K, sp = lambda),
                  data = data,
                  method = "REML",
                  family = "gaussian",
@@ -30,9 +41,7 @@ compute_rss = function(model) {
 }
 
 ddx42_null_model <- fit_gam(ddx42) 
-
-ddx42_alt_model <- ddx42 %>% 
-  group_by()
+ddx42_alt_model <- fitl_alt_model(ddx42)
 
 ddx_null_preds <- ddx42_null_model %>% 
   broom::augment() %>% 
@@ -65,6 +74,18 @@ ddx_preds %>%
 # Extract model fitted values and residuals
 rss_null = round(compute_rss(ddx42_null_model), 2)
 rss_alt = round(compute_rss(ddx42_alt_model), 2)
+
+new_data <- data.frame(fraction = rep(seq(1, 35, length.out = 700),2),
+                       treatment = sort(rep(c("ctrl", "ibr"), 700)))
+new_preds <- predict.gam(object = ddx42_null_model, newdata = new_data)
+new_data <- new_data %>% 
+  mutate(
+    pred_null = predict.gam(object = ddx42_null_model, newdata = new_data),
+    pred_alt = predict.gam(object = ddx42_alt_model, newdata = new_data)
+    )
+                       
+ggplot(new_data, aes(x = fraction)) +
+  geom_line(aes(y = pred_alt, color = treatment))
 
 plot_layers <- list(
   theme_tufte(),
