@@ -11,11 +11,80 @@ ddx42 <- data_averaged %>%
   filter(gene_name == "DDX42")
 
 ddx_preds <- ddx42 %>% 
-  select(fraction, treatment, relative_intensity) %>% 
-  rename(original = relative_intensity)
+  select(fraction, treatment, relative_intensity)
 
-N <- 70
-lambda <- 10^-10
+fit_gam <- function(data){
+  lambda <- 10^-12
+  K = max(as.numeric(data$fraction))
+  
+  with(data, gam(relative_intensity ~ s(fraction, k = K, sp = lambda),
+                 data = data,
+                 method = "REML",
+                 family = "gaussian",
+                 robust = TRUE))
+}
+
+compute_rss = function(model) {
+  rss <- sum(sapply(model[[2]], FUN = function(x) x^2))
+  return(rss)
+}
+
+ddx42_null_model <- fit_gam(ddx42) 
+
+ddx42_alt_model <- ddx42 %>% 
+  group_by()
+
+ddx_null_preds <- ddx42_null_model %>% 
+  broom::augment() %>% 
+  select(relative_intensity, fraction, .fitted, .resid) %>% 
+  rename(
+    pred_null = .fitted,
+    residuals_null = .resid
+  )
+
+ddx42_alt_preds <- ddx42_alt_model %>% 
+  broom::augment() %>% 
+  select(relative_intensity, fraction, .fitted, .resid) %>% 
+  rename(
+    pred_alt = .fitted,
+    residuals_alt = .resid
+  )
+
+ddx_preds <- ddx_preds %>% 
+  mutate(
+    null_predicted = ddx42_null_model[[3]],
+    null_residuals = ddx42_null_model[[2]],
+    alt_predicted = ddx42_alt_model[[3]],
+    alt_residuals = ddx42_alt_model[[2]]
+  )
+
+ddx_preds %>% 
+  summarise(rss_null = round(compute_rss(ddx42_null_model), 2),
+            rss_alt = round(compute_rss(ddx42_alt_model), 2))
+
+# Extract model fitted values and residuals
+rss_null = round(compute_rss(ddx42_null_model), 2)
+rss_alt = round(compute_rss(ddx42_alt_model), 2)
+
+plot_layers <- list(
+  theme_tufte(),
+  geom_rangeframe(),
+  scale_shape_manual(values = c("ctrl" = 2, "ibr" = 19)),
+  labs(y = "Relative Intensity [%]",
+       x = "Fraction",
+       shape = "Treatment"),
+  theme(legend.position = "none")
+)
+
+ggplot(data = ddx_preds, aes(x = fraction)) +
+  geom_point(aes(y = relative_intensity, shape = treatment)) +
+  geom_line(aes(y = null_predicted)) +
+  geom_line(aes(y = relative_intensity, group = fraction), lty = 2, alpha = 0.5) +
+  annotate(geom = "label", x = 5, y = 20, label =  expression(RSS[null] == 9.78), parse = TRUE, size = 8) + 
+  plot_layers 
+
+
+# different gam models-----
 # fit_null <- lapply(lambda, function(lambda) gam(formula = relative_intensity ~ s(fraction, k = 35, sp = lambda) + treatment,
 #                                                 method = "REML",
 #                                                 family = "gaussian",
@@ -67,135 +136,138 @@ lambda <- 10^-10
 
 
 # Model functions
-model_null <- function(data){
-  
-  K = max(as.numeric(data$fraction))
-  
-  with(data, gam(relative_intensity ~ s(fraction, k = K, bs = "ad"),
-               data = data,
-               method = "REML",
-               family = "gaussian",
-               robust = TRUE))
-}
+# model_null <- function(data){
+#   
+#   K = max(as.numeric(data$fraction))
+#   
+#   with(data, gam(relative_intensity ~ s(fraction, k = K, sp = lambda),
+#                data = data,
+#                method = "REML",
+#                family = "gaussian",
+#                robust = TRUE))
+# }
+# 
+# model_alt <- function(data){
+#   
+#   K = max(as.numeric(data$fraction))
+#   
+#   with(data, gam(relative_intensity ~ s(fraction, by = treatment, k = K, sp = lambda),
+#                data = data,
+#                method = "REML",
+#                family = "gaussian",
+#                robust = TRUE))
+# }
 
-model_alt <- function(data){
-  
-  K = max(as.numeric(data$fraction))
-  
-  with(data, gam(relative_intensity ~ s(fraction, by = treatment, k = K, bs = "ad"),
-               data = data,
-               method = "REML",
-               family = "gaussian",
-               robust = TRUE))
-}
-
-ddx42_null_model <- model_null(ddx42)
-ddx42_alt_model <- model_alt(ddx42)
-
-
-compute_rss = function(model) {
-  rss <- sum(sapply(model[[2]], FUN = function(x) x^2))
-  return(rss)
-}
-compute_rss(ddx42_null_model)
-
-rss_null = round(compute_rss(ddx42_null_model), 2)
-rss_alt = round(compute_rss(ddx42_alt_model), 2)
-
-# Add fitted values and residuals from each model to the data.
-ddx42_pred <- ddx42 %>% 
-  mutate(fit_null = fitted(ddx42_null_model),
-         fit_alt = fitted(ddx42_alt_model))
-
-# Composite figure with data points without model and both models with fitted lines
-ddx_base_plot <- ddx42_pred %>%
-  ggplot(aes(x = fraction, y = relative_intensity)) +
-  geom_point(aes(shape = treatment), color = "black", size = 2) +
-  scale_shape_manual(values = c("ctrl" = 2, "ibr" = 19)) +
-  theme_tufte() +
-  geom_rangeframe(sides = 'l') +
-  theme(plot.title.position = "plot",
-        legend.position = "none",
-        legend.text = element_text(family = "Helvetica",
-                                   size = 12),
-        axis.title = element_text(family = "Helvetica",
-                                  size = 12),
-        axis.text = element_text(colour = "black")) +
-  labs(y = "Relative Intensity [%]",
-       x = "Fraction",
-       shape = "Treatment")
-
-ddx_original_plot <- ddx_base_plot +
-  theme(axis.title.x = element_blank(),
-        axis.line.x = element_blank(),
-        axis.ticks.x = element_blank(), 
-        axis.text.x = element_blank())
-
-ddx_null_plot <- ddx_base_plot +
-  geom_line(data = distinct(ddx42_pred, fraction, fit_null),
-            aes(x = fraction, y = fit_null),
-            lwd = 1.2, 
-            alpha = 0.5, 
-            color = "plum4") +
-  geom_line(aes(group = fraction), color = "mediumpurple1", lty = 2) +
-  annotate(geom = "label", x = 5, y = 20, label =  expression(RSS[null] == 109.3), parse = TRUE, size = 8)
-ddx_null_plot
-
-ddx_alt_plot <- ddx_base_plot +
-  geom_line(data = ddx42_pred,
-            aes(x = fraction, y = fit_alt, group = treatment,
-                color = treatment), 
-            linewidth = 1.2, 
-            alpha = 0.5) +
-  geom_line(aes(group = fraction), lty = 2) +
-  scale_color_manual(values = c("red2","gold2")) + 
-  annotate(geom = "label", x = 5, y = 20, label =  expression(RSS[null] == 9.78), parse = TRUE, size = 8) +
-  geom_rangeframe(sides = 'b') +
-ddx_alt_plot
+# ddx42_null_model <- model_null(ddx42)
+# ddx42_alt_model <- model_alt(ddx42)
+# 
+# sum(residuals(ddx42_alt_model)^2)
+# sum(residuals(ddx42_null_model)^2)
 
 
-ddx_original_plot / ddx_null_plot / ddx_alt_plot + 
-  plot_layout(axis_titles = "collect", guides = "collect", axes = "collect_y") +
-  plot_annotation(title = "Elution profiles of DDX42 with and without Ibrutinib treatment",
-                  tag_levels = "A") &
-  theme(plot.tag = element_text(family = "Hevetica", size = 14),
-        plot.background = element_rect(fill = "snow",
-                                        color = "snow"),
-        axis.title.y = element_text(margin = margin(0, 20, 0, 0)),
-        axis.title.y.left = element_text(margin = margin(0, 1, 0, 15)),
-        legend.position = "bottom",
-        legend.text = element_text(family = "Helvetica", size = 12), 
-        legend.background = element_rect(fill = "snow", color = "snow"))
+# # Add fitted values and residuals from each model to the data.
+# null_summary <- ddx_preds %>% 
+#   mutate(fitted = fitted(ddx42_null_model),
+#          residuals = residuals(ddx42_null_model)) 
+# 
+# alt_summary <- ddx_preds %>% 
+#   mutate(fitted = fitted(ddx42_alt_model),
+#          residuals = residuals(ddx42_alt_model)) 
+# 
+# null_plot <- ggplot(data = null_summary, aes(x = fraction)) +
+#   geom_line(aes(y = fitted)) +
+#   geom_point(aes(y = original, shape = treatment)) +
+#   geom_line(aes(y = original, group = fraction), lty = 2) +
+#   plot_layers
+# 
+# alt_plot <- ggplot(data = alt_summary, aes(x = fraction)) +
+#   geom_line(aes(y = fitted, color = treatment), lwd = 1) +
+#   scale_color_manual(values = c("red2", "gold2")) +
+#   geom_point(aes(y = original, shape = treatment)) +
+#   plot_layers
 
 
-ddx_model_plot <- ddx_base_plot +
-  geom_line(data = distinct(ddx42_pred, fraction, fit_null),
-            aes(x = fraction, y = fit_null),
-            lwd = 1.2, alpha = 0.6, color = "honeydew4") +
-  geom_line(data = ddx42_pred,
-            aes(x = fraction, y = fit_alt, group = treatment,
-                color = treatment),linewidth = 1.2, alpha = 0.7) +
-  annotate(geom = "text", x = 8, y = 20, 
-           label = paste0("Deviance = ", round(ddx_lrt[2, 4], 2)), 
-           size = 5) +
-  annotate(geom = "text", x = 7, y = 15, 
-           label = paste0("P-value = ", ddx_lrt[2, 5]), 
-           size = 5)
 
-ddx_original_plot / ddx_model_plot  + 
-  plot_layout(axis_titles = "collect", guides = "collect", axes = "collect_y") +
-  plot_annotation(title = "Elution profiles of DDX42 with and without Ibrutinib treatment",
-                  tag_levels = "A") +
-  theme(plot.tag = element_text(family = "Hevetica", size = 14),
-        plot.background = element_rect(fill = "snow",
-                                       color = "snow"),
-        axis.title.y = element_text(margin = margin(0, 20, 0, 0)),
-        axis.title.y.left = element_text(margin = margin(0, 1, 0, 15)),
-        legend.position = "bottom",
-        legend.text = element_text(family = "Helvetica", size = 12), 
-        legend.background = element_rect(fill = "snow", color = "snow"))
-
-
-# For a better visual comparison we combine the model plots (corresponding to Fig.X):
-ggpubr::ggarrange(ddx_null_plot, ddx_alt_plot, ncol = 2, common.legend = TRUE,
-          labels = c("Null model", "Alternative model"), label.x = 0.2)
+# 
+# # Composite figure with data points without model and both models with fitted lines
+# ddx_base_plot <- ddx42_pred %>%
+#   ggplot(aes(x = fraction, y = relative_intensity)) +
+#   geom_point(aes(shape = treatment), color = "black", size = 2) +
+#   scale_shape_manual(values = c("ctrl" = 2, "ibr" = 19)) +
+#   theme_tufte() +
+#   geom_rangeframe(sides = 'l') +
+#   theme(plot.title.position = "plot",
+#         legend.position = "none",
+#         legend.text = element_text(family = "Helvetica",
+#                                    size = 12),
+#         axis.title = element_text(family = "Helvetica",
+#                                   size = 12),
+#         axis.text = element_text(colour = "black")) +
+#   labs(y = "Relative Intensity [%]",
+#        x = "Fraction",
+#        shape = "Treatment")
+# 
+# ddx_null_plot <- ddx_base_plot +
+#   geom_point(data = ddx42_pred, aes(x = fraction, y = fitted_null), color = "plum4") +
+#   geom_line(data = distinct(ddx42_pred, fraction, fitted_null),
+#             aes(x = fraction, y = fit_null),
+#             lwd = 1.2, 
+#             alpha = 0.5, 
+#             color = "plum4") +
+#   geom_line(aes(group = fraction), color = "mediumpurple1", lty = 2) +
+#   annotate(geom = "label", x = 5, y = 20, label =  expression(RSS[null] == 109.3), parse = TRUE, size = 8)
+# ddx_null_plot
+# 
+# ddx_alt_plot <- ddx_base_plot +
+#   geom_line(data = ddx42_pred,
+#             aes(x = fraction, y = fitted_alt, group = treatment, color = treatment), 
+#             linewidth = 1.2, 
+#             alpha = 0.5) +
+#   geom_line(aes(group = fraction), lty = 2) +
+#   scale_color_manual(values = c("red2","gold2")) + 
+#   annotate(geom = "label", x = 5, y = 20, label =  expression(RSS[null] == 9.78), parse = TRUE, size = 8) +
+#   geom_rangeframe(sides = 'b') +
+# ddx_alt_plot
+# 
+# 
+# ddx_original_plot / ddx_null_plot / ddx_alt_plot + 
+#   plot_layout(axis_titles = "collect", guides = "collect", axes = "collect_y") +
+#   plot_annotation(title = "Elution profiles of DDX42 with and without Ibrutinib treatment",
+#                   tag_levels = "A") &
+#   theme(plot.tag = element_text(family = "Hevetica", size = 14),
+#         plot.background = element_rect(fill = "snow",
+#                                         color = "snow"),
+#         axis.title.y = element_text(margin = margin(0, 20, 0, 0)),
+#         axis.title.y.left = element_text(margin = margin(0, 1, 0, 15)),
+#         legend.position = "bottom",
+#         legend.text = element_text(family = "Helvetica", size = 12), 
+#         legend.background = element_rect(fill = "snow", color = "snow"))
+# 
+# 
+# ddx_model_plot <- ddx_base_plot +
+#   geom_line(data = distinct(ddx42_pred, fraction, fit_null),
+#             aes(x = fraction, y = fit_null),
+#             lwd = 1.2, alpha = 0.6, color = "honeydew4") +
+#   geom_line(data = ddx42_pred,
+#             aes(x = fraction, y = fit_alt, group = treatment,
+#                 color = treatment),linewidth = 1.2, alpha = 0.7) +
+#   annotate(geom = "text", x = 8, y = 20, 
+#            label = paste0("Deviance = ", round(ddx_lrt[2, 4], 2)), 
+#            size = 5) +
+#   annotate(geom = "text", x = 7, y = 15, 
+#            label = paste0("P-value = ", ddx_lrt[2, 5]), 
+#            size = 5)
+# 
+# ddx_original_plot / ddx_model_plot  + 
+#   plot_layout(axis_titles = "collect", guides = "collect", axes = "collect_y") +
+#   plot_annotation(title = "Elution profiles of DDX42 with and without Ibrutinib treatment",
+#                   tag_levels = "A") +
+#   theme(plot.tag = element_text(family = "Hevetica", size = 14),
+#         plot.background = element_rect(fill = "snow",
+#                                        color = "snow"),
+#         axis.title.y = element_text(margin = margin(0, 20, 0, 0)),
+#         axis.title.y.left = element_text(margin = margin(0, 1, 0, 15)),
+#         legend.position = "bottom",
+#         legend.text = element_text(family = "Helvetica", size = 12), 
+#         legend.background = element_rect(fill = "snow", color = "snow"))
+# 
