@@ -1,3 +1,5 @@
+# library(ggExtra) #adds marginal density plots
+library(ggsci) #color theme
 library(ggthemes)
 library(mgcv)
 library(patchwork)
@@ -9,9 +11,6 @@ windowsFonts(Times=windowsFont("TT Times New Roman"))
 
 ddx42 <- data_averaged %>%
   filter(gene_name == "DDX42")
-
-ddx_preds <- ddx42 %>% 
-  select(fraction, treatment, relative_intensity)
 
 # Model functions----
 fit_null_model <- function(data){
@@ -36,6 +35,31 @@ fit_alt_model <- function(data){
                  robust = TRUE))
 }
 
+fit_models <- function(data) {
+  
+  fit_null <- fit_null_model(data)
+  fit_alt <- fit_alt_model(data)
+  
+  null_predicted <- fit_null[[3]]
+  null_residuals <- fit_null[[2]]
+  alt_predicted <- fit_alt[[3]]
+  alt_residuals <- fit_alt[[2]]
+  
+  # Output and summarize combined parameters in a table
+  output <- data %>% 
+    mutate(
+      null_predicted = null_predicted,
+      null_residuals = null_residuals,
+      alt_predicted = alt_predicted,
+      alt_residuals = alt_residuals
+      # p_value = p_val
+    )
+  
+  return(output)
+}
+
+ddx_preds <- fit_models(ddx42)
+
 compute_rss = function(model) {
   rss <- sum(sapply(model[[2]], FUN = function(x) x^2))
   return(rss)
@@ -43,34 +67,6 @@ compute_rss = function(model) {
 
 ddx42_null_model <- fit_null_model(ddx42) 
 ddx42_alt_model <- fit_alt_model(ddx42)
-
-ddx_null_preds <- ddx42_null_model %>% 
-  broom::augment() %>% 
-  select(relative_intensity, fraction, .fitted, .resid) %>% 
-  rename(
-    pred_null = .fitted,
-    residuals_null = .resid
-  )
-
-ddx42_alt_preds <- ddx42_alt_model %>% 
-  broom::augment() %>% 
-  select(relative_intensity, fraction, .fitted, .resid) %>% 
-  rename(
-    pred_alt = .fitted,
-    residuals_alt = .resid
-  )
-#  Combine model outputs
-ddx_preds <- ddx_preds %>% 
-  mutate(
-    null_predicted = ddx42_null_model[[3]],
-    null_residuals = ddx42_null_model[[2]],
-    alt_predicted = ddx42_alt_model[[3]],
-    alt_residuals = ddx42_alt_model[[2]]
-  )
-
-ddx_preds %>% 
-  summarise(rss_null = round(compute_rss(ddx42_null_model), 2),
-            rss_alt = round(compute_rss(ddx42_alt_model), 2))
 
 # Extract model fitted values and residuals-----
 rss_null = round(compute_rss(ddx42_null_model), 2)
@@ -86,13 +82,11 @@ new_data <- new_data %>%
     pred_alt = predict.gam(object = ddx42_alt_model, newdata = new_data)
     )
                        
-
 # Illustrative plots----
-
 # Plot layout
 plot_layers <- list(
   theme_tufte(),
-  geom_rangeframe(),
+  geom_rangeframe(sides = "bl"),
   scale_shape_manual(values = c("ctrl" = 2, "ibr" = 19)),
   labs(y = "Relative Intensity [%]",
        x = "Fraction",
@@ -134,7 +128,7 @@ ddx_alt_plot <-
   annotate(geom = "label", 
            x = 5, 
            y = 23, 
-           label =  paste0("RSS[null] == ", rss_alt), 
+           label =  paste0("RSS[alt] == ", rss_alt), 
            parse = TRUE, 
            size = 6) +
   plot_layers
