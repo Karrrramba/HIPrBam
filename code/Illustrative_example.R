@@ -1,74 +1,26 @@
 # library(ggExtra) #adds marginal density plots
 library(ggsci) #color theme
 library(ggthemes)
-library(mgcv)
 library(patchwork)
-library(tidyverse)
+
 
 # Register windows fonts:
 windowsFonts('Helvetica'=windowsFont("Helvetica"))
 windowsFonts(Times=windowsFont("TT Times New Roman"))
 
+# Model single protein -----
 ddx42 <- data_averaged %>%
   filter(gene_name == "DDX42")
 
-# Model functions----
-fit_null_model <- function(data){
-  lambda <- 10^-12
-  K = max(as.numeric(data$fraction))
-  
-  with(data, gam(relative_intensity ~ s(fraction, k = K, sp = lambda),
-                 data = data,
-                 method = "REML",
-                 family = "gaussian",
-                 robust = TRUE))
-}
-
-fit_alt_model <- function(data){
-  lambda <- 10^-12
-  K = max(as.numeric(data$fraction))
-  
-  with(data, gam(relative_intensity ~ s(fraction, by = treatment, k = K, sp = lambda),
-                 data = data,
-                 method = "REML",
-                 family = "gaussian",
-                 robust = TRUE))
-}
-
-fit_models <- function(data) {
-  
-  fit_null <- fit_null_model(data)
-  fit_alt <- fit_alt_model(data)
-  
-  null_predicted <- fit_null[[3]]
-  null_residuals <- fit_null[[2]]
-  alt_predicted <- fit_alt[[3]]
-  alt_residuals <- fit_alt[[2]]
-  
-  # Output and summarize combined parameters in a table
-  output <- data %>% 
-    mutate(
-      null_predicted = null_predicted,
-      null_residuals = null_residuals,
-      alt_predicted = alt_predicted,
-      alt_residuals = alt_residuals
-      # p_value = p_val
-    )
-  
-  return(output)
-}
-
 ddx_preds <- fit_models(ddx42)
+
+ddx42_null_model <- fit_null_model(ddx42) 
+ddx42_alt_model <- fit_alt_model(ddx42)
 
 compute_rss = function(model) {
   rss <- sum(sapply(model[[2]], FUN = function(x) x^2))
   return(rss)
 }
-
-ddx42_null_model <- fit_null_model(ddx42) 
-ddx42_alt_model <- fit_alt_model(ddx42)
-
-# Extract model fitted values and residuals-----
 rss_null = round(compute_rss(ddx42_null_model), 2)
 rss_alt = round(compute_rss(ddx42_alt_model), 2)
 
@@ -82,7 +34,7 @@ new_data <- new_data %>%
     pred_alt = predict.gam(object = ddx42_alt_model, newdata = new_data)
     )
                        
-# Illustrative plots----
+# Plot----
 # Plot layout
 plot_layers <- list(
   theme_tufte(),
