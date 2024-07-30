@@ -27,7 +27,7 @@ fit_alt_model <- function(data){
                  robust = TRUE))
 }
 
-fit_models <- function(data) {
+fit_models <- function(data, export_details = FALSE) {
   
   fit_null <- fit_null_model(data)
   fit_alt <- fit_alt_model(data)
@@ -41,21 +41,44 @@ fit_models <- function(data) {
   alt_df <- fit_alt$df.residual #70 - df.residual ?
   alt_conv <- fit_alt$converged
   
-  output <- data %>% 
-    mutate(
-      # predicted_null = null_predicted,
-      residuals_null = null_residuals,
-      # predicted_alt = alt_predicted,
-      residuals_alt = alt_residuals,
-      df_null = null_df,
-      df_alt = alt_df,
-      converged_null = null_conv,
-      converged_alt = alt_conv
+  # coefs_null <- coef(fit_null)
+  # coefs_alt <- coef(fit_alt)
+  
+  output <- data.frame(
+    gene_name = data$gene_name,
+    treatment = data$treatment,
+    fraction = data$fraction,
+    # predicted_null = null_predicted,
+    residuals_null = null_residuals,
+    # predicted_alt = alt_predicted,
+    residuals_alt = alt_residuals,
+    df_null = null_df,
+    df_alt = alt_df,
+    converged_null = null_conv,
+    converged_alt = alt_conv
     )
   
-  return(output)
+  summarized_output <- output %>% 
+    select(gene_name, starts_with("residuals"), df_null:converged_alt) %>% 
+    group_by(gene_name) %>% 
+    summarise(across(starts_with("residuals"), ~sum(.x^2)),
+              across(starts_with("df"), mean),
+              across(starts_with("converged"), mean),
+              .groups = "drop") %>%
+    rename_with(~ gsub("residuals", "rss", .x, fixed = TRUE)) %>% 
+    mutate(
+      across(starts_with("rss"), ~round(.x, 2)),
+      delta_rss = round(rss_null - rss_alt, 2),
+      across(starts_with("converged"), ~if_else(.x == 1, TRUE, FALSE))
+    )
+  
+  if (export_detials == TRUE) {
+    return(output)
+  } else {
+    return(summarized_output)
+  }
+  
 }
-
 
 
 # wrap model summary into function
@@ -68,19 +91,19 @@ data_modeled <- data_averaged %>%
   do(fit_models(.)) %>% 
   ungroup() 
 
-model_summary <- data_modeled %>% 
-  select(gene_name, starts_with("residuals"), df_null:converged_alt) %>% 
-  group_by(gene_name) %>% 
-  summarise(across(starts_with("residuals"), ~sum(.x^2)),
-            across(starts_with("df"), mean),
-            across(starts_with("converged"), mean),
-            .groups = "drop") %>%
-  rename_with(~ gsub("residuals", "rss", .x, fixed = TRUE)) %>% 
-  mutate(
-    across(starts_with("rss"), ~round(.x, 2)),
-    delta_rss = round(rss_null - rss_alt, 2),
-    across(starts_with("converged"), ~if_else(.x == 1, TRUE, FALSE))
-    )
+# model_summary <- data_modeled %>% 
+#   select(gene_name, starts_with("residuals"), df_null:converged_alt) %>% 
+#   group_by(gene_name) %>% 
+#   summarise(across(starts_with("residuals"), ~sum(.x^2)),
+#             across(starts_with("df"), mean),
+#             across(starts_with("converged"), mean),
+#             .groups = "drop") %>%
+#   rename_with(~ gsub("residuals", "rss", .x, fixed = TRUE)) %>% 
+#   mutate(
+#     across(starts_with("rss"), ~round(.x, 2)),
+#     delta_rss = round(rss_null - rss_alt, 2),
+#     across(starts_with("converged"), ~if_else(.x == 1, TRUE, FALSE))
+#     )
 
 
 # Apply Benjamini-Hochberg correction for multiple testing
