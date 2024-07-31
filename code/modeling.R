@@ -1,10 +1,10 @@
 library(mgcv)
-library(future)
+# library(future)
+
+# future::plan(multisession)
 
 # Model functions----
 fit_null_model <- function(data){
-  
-  future::plan(multisession)
   
   lambda <- 10^-12
   K = max(as.numeric(data$fraction))
@@ -31,16 +31,17 @@ fit_models <- function(data, export_details = FALSE) {
   
   fit_null <- fit_null_model(data)
   fit_alt <- fit_alt_model(data)
+  test_res <- anova.gam(fit_null, fit_alt, test = "F")
   
-  null_predicted <- fit_null$fitted.values
-  # null_residuals <- fit_null$residuals
-  null_df <- fit_null$df.residual #70 - df.residual ?
+  # null_predicted <- fit_null$fitted.values
+  null_residuals <- fit_null$residuals
   null_conv <- fit_null$converged
   # alt_predicted <- fit_alt$fitted.values
   alt_residuals <- fit_alt$residuals
-  alt_df <- fit_alt$df.residual #70 - df.residual ?
   alt_conv <- fit_alt$converged
-  
+  dev <- test_res[2, "Deviance"]
+  f_stat <- test_res[2, "F"]
+  p_val <- test_res[2, "Pr(>F)"]
   # coefs_null <- coef(fit_null)
   # coefs_alt <- coef(fit_alt)
   
@@ -52,27 +53,33 @@ fit_models <- function(data, export_details = FALSE) {
     residuals_null = null_residuals,
     # predicted_alt = alt_predicted,
     residuals_alt = alt_residuals,
-    df_null = null_df,
-    df_alt = alt_df,
-    converged_null = null_conv,
-    converged_alt = alt_conv
+    # converged_null = null_conv,
+    # converged_alt = alt_conv,
+    deviance = dev,
+    f_stat = f_stat,
+    p_value = p_val
     )
   
   summarized_output <- output %>% 
-    select(gene_name, starts_with("residuals"), df_null:converged_alt) %>% 
+    select(gene_name, starts_with("residuals"), deviance:p_value) %>% 
     group_by(gene_name) %>% 
     summarise(across(starts_with("residuals"), ~sum(.x^2)),
-              across(starts_with("df"), mean),
-              across(starts_with("converged"), mean),
+              # across(starts_with("converged"), mean),
+              across(c(deviance, f_stat, p_value),  mean),
               .groups = "drop") %>%
     rename_with(~ gsub("residuals", "rss", .x, fixed = TRUE)) %>% 
     mutate(
-      across(starts_with("rss"), ~round(.x, 2)),
-      delta_rss = round(rss_null - rss_alt, 2),
+      significant = if_else(p_value <= 0.05, TRUE, FALSE),
+      sig_level = case_when(
+        between(p_value, 0.05, 0.01) ~ "*",
+        between(p_value, 0.01, 0.001) ~ "**",
+        p_value < 0.001 ~ "***",
+        .default = "ns" 
+      ),
       across(starts_with("converged"), ~if_else(.x == 1, TRUE, FALSE))
     )
   
-  if (export_detials == TRUE) {
+  if (export_details == TRUE) {
     return(output)
   } else {
     return(summarized_output)
@@ -91,6 +98,9 @@ data_modeled <- data_averaged %>%
   do(fit_models(.)) %>% 
   ungroup() 
 
+data_modeled %>% 
+  filter(sig_level == "***") 
+
 # model_summary <- data_modeled %>% 
 #   select(gene_name, starts_with("residuals"), df_null:converged_alt) %>% 
 #   group_by(gene_name) %>% 
@@ -105,6 +115,20 @@ data_modeled <- data_averaged %>%
 #     across(starts_with("converged"), ~if_else(.x == 1, TRUE, FALSE))
 #     )
 
+# plot delta rss vs F-distirbution
+data_modeled %>% 
+  mutate(
+    df_null = 35 - df_null,
+    df_alt = 70 - df_alt,
+    f_stat = (delta_rss/df_null) / (delta_rss/df_alt),
+    p_value = 1 - pf(f_stat, df1 = df_null, df2 = df_alt),
+    fdr = p.adjust(p_value, method = "BH")
+  )
+
+ggplot(model_summary, aes(x = delta_rss)) +
+  geom_histogram() +
+  geom_density() +
+  geom_density()
 
 # Apply Benjamini-Hochberg correction for multiple testing
   
