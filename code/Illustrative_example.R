@@ -16,6 +16,15 @@ ddx_preds <- fit_models(ddx42)
 
 ddx42_null_model <- fit_null_model(ddx42) 
 ddx42_alt_model <- fit_alt_model(ddx42)
+ddx42_test_res <- anova.gam(ddx42_null_model, ddx42_alt_model, test = "F")
+
+abraxas2 <- data_averaged %>%
+  filter(gene_name == "ABRAXAS2")
+
+abraxas2_null_model <- fit_null_model(abraxas2)
+abraxas2_alt_model <- fit_alt_model(abraxas2)
+
+abraxas2_test_res <- anova.gam(abraxas2_null_model, abraxas2_alt_model, test = "F")
 
 compute_rss = function(model) {
   rss <- sum(sapply(model[[2]], FUN = function(x) x^2))
@@ -33,7 +42,7 @@ new_data <- new_data %>%
     pred_null = predict.gam(object = ddx42_null_model, newdata = new_data),
     pred_alt = predict.gam(object = ddx42_alt_model, newdata = new_data)
     )
-                       
+         
 # Plot----
 # Plot layout
 plot_layers <- list(
