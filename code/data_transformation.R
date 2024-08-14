@@ -1,5 +1,5 @@
 #load packages
-
+# library(randomForest)
 library(tidyverse)
 
 # Data import and transformation----
@@ -134,7 +134,7 @@ transform_intensities <- function(data){
     mutate(across(c(intensity, total_intensity, fraction), as.numeric)) 
   
   rel <- long %>% 
-    mutate(relative_intensity = round(intensity / `total_intensity` * 100, 1)) %>% 
+    mutate(relative_intensity = round(intensity / `total_intensity`, 1)) %>% #scaled to [0, 1]
     select(!c(intensity, total_intensity)) %>% 
     group_by(gene_name, experiment) %>% 
     arrange(gene_name, experiment, fraction) %>% 
@@ -162,63 +162,78 @@ correlations <- data_rel %>%
 # hist(correlations$pearson)
 # boxplot(correlations$pearson)
 
-correlated <- flatten(correlations[correlations$pearson >= 0.8, 'gene_name'])
+correlated <- flatten(correlations[correlations$pearson >= 0.9, 'gene_name'])
 
-data_averaged <- data_rel %>% 
-  filter(as.character(gene_name) %in% correlated) %>% 
-  pivot_wider(id_cols = c(gene_name, fraction),
-              names_from = experiment,
-              values_from = relative_intensity) %>% 
-  
-  rowwise() %>% 
-  mutate(ibr = round(mean(c(ibr1, ibr2)), 1)) %>% 
-  ungroup() %>% 
-  pivot_longer(cols = c(ctrl, ibr),
-               names_to = "treatment",
-               values_to = "relative_intensity") %>% 
-  mutate(treatment = as.factor(treatment)) %>% 
-  select(!c(ibr1, ibr2)) %>% 
-  relocate(treatment, .after = gene_name) %>% 
-  group_by(gene_name, treatment) %>% 
-  arrange(gene_name, treatment, fraction) %>% 
-  ungroup() 
-
-# Prepare data for t-test-----
-data_updated %>%
+data_averaged <- data_rel %>%
   filter(as.character(gene_name) %in% correlated) %>%
-  select(!c(intensity_l, intensity_m, intensity_h)) %>%
-  pivot_longer(
-    cols = tidyselect::matches("([l|m|h]_f.+)"),
-    names_to = c("experiment", "fraction"),
-    names_pattern = "intensity_(.)_f(.+)$",
-    values_to = "intensity"
-  ) %>%
-  mutate(experiment = case_when(
-    experiment == "l" ~ "ctrl",
-    experiment == "m" ~ "ibr1",
-    experiment == "h" ~ "ibr2"
-  )) %>%
-  mutate(across(c(experiment, gene_name), as.factor)) %>%
-  mutate(across(c(fraction, intensity), as.numeric)) %>%
   pivot_wider(id_cols = c(gene_name, fraction),
               names_from = experiment,
-              values_from = intensity) %>% 
-  
-  rowwise() %>% 
-  mutate(ibr = round(mean(c(ibr1, ibr2)), 1)) %>% 
-  select(!c(ibr1, ibr2)) %>% 
+              values_from = relative_intensity) %>%
+
+  rowwise() %>%
+  mutate(ibr = round(mean(c(ibr1, ibr2)), 1)) %>%
+  ungroup() %>%
   pivot_longer(cols = c(ctrl, ibr),
                names_to = "treatment",
-               values_to = "intensity") %>% 
-  mutate(intensity = log2(intensity))
+               values_to = "relative_intensity") %>%
+  mutate(treatment = as.factor(treatment)) %>%
+  select(!c(ibr1, ibr2)) %>%
+  relocate(treatment, .after = gene_name) %>%
+  group_by(gene_name, treatment) %>%
+  arrange(gene_name, treatment, fraction) %>%
+  ungroup()
+
+# data_sim <- data_rel %>% 
+#   filter(as.character(gene_name) %in% correlated) %>% 
+#   pivot_wider(id_cols = c(gene_name, fraction),
+#               names_from = experiment,
+#               values_from = relative_intensity) %>% 
+#   mutate(diff = ibr1 - ibr2)
+# 
+# sim_model <- gam(ibr2 ~ s(ibr1, by = gene_name, sp = 10^-12, k = 35), 
+#                  method = "REML",
+#                  data = data_sim)
 
 
+# any differences where one replicate = 0?
 
-  pivot_wider(id_cols = c(gene_name, treatment),
-              names_from = fraction,
-              names_prefix = "fraction",
-              values_from = intensity)
-  
+
+# # Prepare data for t-test-----
+# data_updated %>%
+#   filter(as.character(gene_name) %in% correlated) %>%
+#   select(!c(intensity_l, intensity_m, intensity_h)) %>%
+#   pivot_longer(
+#     cols = tidyselect::matches("([l|m|h]_f.+)"),
+#     names_to = c("experiment", "fraction"),
+#     names_pattern = "intensity_(.)_f(.+)$",
+#     values_to = "intensity"
+#   ) %>%
+#   mutate(experiment = case_when(
+#     experiment == "l" ~ "ctrl",
+#     experiment == "m" ~ "ibr1",
+#     experiment == "h" ~ "ibr2"
+#   )) %>%
+#   mutate(across(c(experiment, gene_name), as.factor)) %>%
+#   mutate(across(c(fraction, intensity), as.numeric)) %>%
+#   pivot_wider(id_cols = c(gene_name, fraction),
+#               names_from = experiment,
+#               values_from = intensity) %>% 
+#   
+#   rowwise() %>% 
+#   mutate(ibr = round(mean(c(ibr1, ibr2)), 1)) %>% 
+#   select(!c(ibr1, ibr2)) %>% 
+#   pivot_longer(cols = c(ctrl, ibr),
+#                names_to = "treatment",
+#                values_to = "intensity") %>% 
+#   mutate(intensity = log2(intensity))
+# 
+# 
+# 
+#   pivot_wider(id_cols = c(gene_name, treatment),
+#               names_from = fraction,
+#               names_prefix = "fraction",
+#               values_from = intensity)
+#   
 
 # t-test with mutate(fdr = p.adjust(p_value, method = "BH"))
 

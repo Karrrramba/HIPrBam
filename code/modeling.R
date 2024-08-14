@@ -12,7 +12,7 @@ fit_null_model <- function(data){
   with(data, mgcv::gam(relative_intensity ~ s(fraction, k = K, sp = lambda),
                  data = data,
                  method = "REML",
-                 family = "gaussian",
+                 family = "betar",
                  robust = TRUE))
 }
 
@@ -23,7 +23,7 @@ fit_alt_model <- function(data){
   with(data, mgcv::gam(relative_intensity ~ s(fraction, by = treatment, k = K, sp = lambda),
                  data = data,
                  method = "REML",
-                 family = "gaussian",
+                 family = "betar",
                  robust = TRUE))
 }
 
@@ -68,16 +68,7 @@ fit_models <- function(data, export_details = FALSE) {
               across(c(deviance, f_stat, p_value),  mean),
               .groups = "drop") %>%
     rename_with(~ gsub("residuals", "rss", .x, fixed = TRUE)) %>% 
-    mutate(
-      significant = if_else(p_value <= 0.05, TRUE, FALSE),
-      sig_level = case_when(
-        between(p_value, 0.05, 0.01) ~ "*",
-        between(p_value, 0.01, 0.001) ~ "**",
-        p_value < 0.001 ~ "***",
-        .default = "ns" 
-      ),
-      across(starts_with("converged"), ~if_else(.x == 1, TRUE, FALSE))
-    )
+    mutate(across(starts_with("converged"), ~if_else(.x == 1, TRUE, FALSE)))
   
   if (export_details == TRUE) {
     return(output)
@@ -96,10 +87,20 @@ set.seed(123)
 data_modeled <- data_averaged %>% 
   group_by(gene_name) %>% 
   do(fit_models(.)) %>% 
-  ungroup() 
+  ungroup() %>% 
+  mutate(
+    fdr = p.adjust(p_value, method = "BH"),
+    significant = if_else(fdr <= 0.05, TRUE, FALSE),
+    sig_level = case_when(
+      between(fdr, 0.05, 0.01) ~ "*",
+      between(fdr, 0.01, 0.001) ~ "**",
+      fdr < 0.001 ~ "***",
+      .default = "ns" 
+    )
+  )
 
 data_modeled %>% 
-  filter(sig_level == "***") 
+  filter(significant == TRUE) 
 
 # model_summary <- data_modeled %>% 
 #   select(gene_name, starts_with("residuals"), df_null:converged_alt) %>% 
@@ -116,19 +117,9 @@ data_modeled %>%
 #     )
 
 # plot delta rss vs F-distirbution
-data_modeled %>% 
-  mutate(
-    df_null = 35 - df_null,
-    df_alt = 70 - df_alt,
-    f_stat = (delta_rss/df_null) / (delta_rss/df_alt),
-    p_value = 1 - pf(f_stat, df1 = df_null, df2 = df_alt),
-    fdr = p.adjust(p_value, method = "BH")
-  )
 
-ggplot(model_summary, aes(x = delta_rss)) +
-  geom_histogram() +
-  geom_density() +
-  geom_density()
+
+
 
 # Apply Benjamini-Hochberg correction for multiple testing
   
